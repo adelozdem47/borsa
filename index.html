@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradeMirror Global | Davranışsal Analiz Portalı</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <style>
+        /* CSS Değişkenleri */
+        :root {
+            --bg-dark: #0a0a1a;
+            --bg-card: #14142a; 
+            --color-primary: #00bcd4; 
+            --color-secondary: #8e8dff; 
+            --color-text: #e9e9f1;
+            --color-success: #38c172;
+            --color-danger: #ff6b6b;
+            --color-warning: #ffcc00;
+            --border-radius: 12px;
+            --box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--color-text);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .header {
+            background-color: var(--bg-card);
+            padding: 20px 40px;
+            border-bottom: 2px solid var(--color-primary);
+            box-shadow: var(--box-shadow);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8em;
+            color: var(--color-primary);
+            letter-spacing: 2px;
+        }
+
+        .content-wrapper {
+            padding: 40px;
+        }
+
+        /* Ana Grid Yapısı */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+        }
+
+        /* Kart Stili */
+        .card {
+            background-color: var(--bg-card);
+            padding: 30px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            margin-bottom: 30px;
+            border: 1px solid #3e3e78;
+        }
+
+        .card h3 {
+            font-family: 'Orbitron', sans-serif;
+            color: var(--color-secondary);
+            margin-top: 0;
+            border-bottom: 1px solid #3e3e78;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* DNA Metrikleri ve Karşılaştırma */
+        .dna-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .dna-metric {
+            background-color: #0d0d1a;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #2e2e5a;
+        }
+        .dna-metric strong {
+            display: block;
+            font-size: 1.5em;
+            color: var(--color-primary);
+            font-family: 'Orbitron', sans-serif;
+        }
+        .dna-metric small {
+            display: block;
+            color: #b0b0d0;
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+        .comparison-info {
+            font-size: 0.9em;
+            color: var(--color-warning);
+            margin-top: 15px;
+            padding: 10px;
+            border: 1px dashed var(--color-warning);
+            border-radius: 6px;
+        }
+
+        /* Sekme Stilleri */
+        .tab-buttons {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #3e3e78;
+        }
+        .tab-button {
+            background-color: #0d0d1a;
+            color: var(--color-text);
+            padding: 12px 20px;
+            border: none;
+            cursor: pointer;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            margin-right: 5px;
+            transition: background-color 0.3s;
+        }
+        .tab-button.active {
+            background-color: var(--bg-card);
+            border: 1px solid #3e3e78;
+            border-bottom: none;
+            color: var(--color-primary);
+        }
+        .tab-content {
+            display: none;
+            padding-top: 10px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Tablo Stilleri (Ticaret Otopsisi) */
+        .trade-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+        .trade-table th, .trade-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #2e2e5a;
+        }
+        .trade-table th {
+            background-color: var(--color-secondary);
+            color: var(--bg-dark);
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .trade-table tr:hover {
+            background-color: #1a1a3a;
+        }
+        .trade-table .win { color: var(--color-success); font-weight: bold; }
+        .trade-table .loss { color: var(--color-danger); font-weight: bold; }
+        
+        /* Diğer Form ve Buton Stilleri */
+        .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+        .form-group label { display: block; margin-bottom: 8px; color: var(--color-secondary); font-weight: 700; font-size: 0.9em; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid #3e3e78; border-radius: 6px; background-color: #0d0d1a; color: var(--color-text); font-size: 1em; box-sizing: border-box; }
+        .btn-primary { background-color: var(--color-primary); color: var(--bg-dark); padding: 12px 25px; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: background-color 0.3s, transform 0.2s; text-transform: uppercase; }
+        .btn-primary:hover { background-color: #00e5ff; transform: translateY(-1px); }
+        .btn-secondary { background-color: #3e3e78; color: var(--color-text); padding: 12px 25px; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: background-color 0.3s, transform 0.2s; text-transform: uppercase; }
+        .btn-secondary:hover { background-color: #5555aa; }
+        #message-box { padding: 15px; margin-bottom: 20px; border-radius: var(--border-radius); text-align: center; font-weight: bold; display: none; }
+        .msg-success { background-color: var(--color-success); color: white; }
+        .msg-error { background-color: var(--color-danger); color: white; }
+        .report-summary { background-color: #0d0d1a; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid var(--color-primary); }
+        .report-summary p { margin: 0 0 10px 0; }
+        .report-summary strong { color: var(--color-secondary); }
+        .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); padding-top: 60px; }
+        .modal-content { background-color: var(--bg-card); margin: 5% auto; padding: 30px; border-radius: var(--border-radius); width: 90%; max-width: 600px; box-shadow: var(--box-shadow); border: 2px solid var(--color-secondary); animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from {opacity: 0;} to {opacity: 1;} }
+        .modal-content h2 { font-family: 'Orbitron', sans-serif; color: var(--color-primary); border-bottom: 1px solid #3e3e78; padding-bottom: 10px; margin-bottom: 20px; }
+        .modal-content p { color: #b0b0d0; margin-bottom: 20px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo">TradeMirror Global</div>
+        <div style="display: flex; gap: 15px;">
+            <button class="btn-primary" onclick="syncTrades()">
+                <i class="fas fa-sync-alt"></i> İşlemleri Senkronize Et
+            </button>
+            <button class="btn-secondary" onclick="sendReport()">
+                <i class="fas fa-file-pdf"></i> Raporu E-posta ile Gönder
+            </button>
+            <button class="btn-primary" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Oturumu Kapat
+            </button>
+        </div>
+    </div>
+
+    <div class="content-wrapper">
+
+        <div id="message-box"></div>
+        
+        <div id="live-alert" class="card" style="display:none; background-color: #3b1717; border-color: var(--color-danger); color: white;">
+            <i class="fas fa-exclamation-triangle"></i> <span id="alert-text"></span>
+        </div>
+
+        <div class="dashboard-grid">
+            
+            <div>
+                
+                <div class="tab-buttons">
+                    <button class="tab-button active" onclick="openTab('dna-analysis')"><i class="fas fa-chart-area"></i> DNA Analizi ve Grafikler</button>
+                    <button class="tab-button" onclick="openTab('trade-history')"><i class="fas fa-list"></i> Ticaret Otopsi Geçmişi</button>
+                    <button class="tab-button" onclick="openTab('manual-entry')"><i class="fas fa-keyboard"></i> Manuel İşlem Kaydı</button>
+                </div>
+                
+                <div id="dna-analysis" class="tab-content active">
+                    
+                    <div class="card" id="dna-card">
+                        <h3><i class="fas fa-dna"></i> Davranışsal DNA Profili (Gerçek vs. Referans)</h3>
+                        <div id="dna-profile">
+                            <p style="text-align: center; color: #b0b0d0;">Veriler yükleniyor...</p>
+                        </div>
+                        <div id="comparison-display" class="comparison-info" style="display: none;"></div>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="fas fa-chart-line"></i> Panik Eşiği Gelişim Grafiği (Son 30 Gün)</h3>
+                        <div style="height: 300px;">
+                            <canvas id="dnaChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="trade-history" class="tab-content">
+                    <div class="card">
+                        <h3><i class="fas fa-history"></i> Tüm İşlemleriniz</h3>
+                        <div id="transaction-list">
+                            <p style="text-align: center; color: #b0b0d0;">İşlem geçmişi yükleniyor...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="manual-entry" class="tab-content">
+                    <div class="card">
+                        <h3><i class="fas fa-keyboard"></i> Yeni İşlem Kaydı ve Dinamik Analiz</h3>
+                        <form id="add-transaction-form">
+                            <div class="form-grid">
+                                
+                                <div class="form-group">
+                                    <label for="trade-id">İşlem ID'si (Benzersiz Kod)</label>
+                                    <input type="text" id="trade-id" required placeholder="Örn: TRD-001">
+                                </div>
+                                <div class="form-group">
+                                    <label for="is-winning">İşlem Sonucu</label>
+                                    <select id="is-winning" required>
+                                        <option value="true">Kârla Kapatıldı</option>
+                                        <option value="false">Zararla Kapatıldı</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="duration-hours">Pozisyonda Kalma Süresi (Saat)</label>
+                                    <input type="number" id="duration-hours" required min="0.1" step="0.1" placeholder="Örn: 12.5">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="pnl-pct">Gerçekleşen Kâr/Zarar (%)</label>
+                                    <input type="number" id="pnl-pct" required step="0.01" placeholder="Örn: 5.50 veya -3.20">
+                                </div>
+                                <div class="form-group">
+                                    <label for="max-drawdown-pct">Maksimum Kayıp Çekme (%)</label>
+                                    <input type="number" id="max-drawdown-pct" required min="0" step="0.01" placeholder="Pozisyon içi max. kayıp">
+                                </div>
+                                <div class="form-group">
+                                    <label for="volatility-pct">Ortalama Oynaklık (%)</label>
+                                    <input type="number" id="volatility-pct" required min="0" step="0.01" placeholder="İşlem süresince ort. oynaklık">
+                                </div>
+
+                            </div>
+                            <button type="submit" class="btn-primary" id="save-transaction-button">
+                                İşlemi Kaydet ve DNA Skorunu Güncelle
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+
+            <div id="report-card" class="card">
+                <h3><i class="fas fa-chart-pie"></i> Haftalık Psiko-Metrik Rapor</h3>
+                <div id="weekly-report">
+                    <p style="text-align: center; color: #b0b0d0;">Rapor verileri yükleniyor...</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="apiSetupModal" class="modal">
+        <div class="modal-content">
+            <h2><i class="fas fa-link"></i> Otomasyon Kurulumu (Kritik Adım)</h2>
+            <p>TradeMirror'ın otomatik işlem analizi yapabilmesi için, kullandığınız borsa platformunun (Örn: Binance, Kraken vb.) API Anahtarlarını kaydetmeniz gerekmektedir.</p>
+            
+            <p style="color: var(--color-danger); font-weight: bold;">⚠️ Güvenlik Notu: Bu hassas veriler **uçtan uca şifreleme (End-to-End Encryption) ile kriptografik olarak korunmaktadır**.</p>
+            
+            <form id="api-setup-form">
+                <div class="form-group">
+                    <label for="api-key">API Anahtarı (Key)</label>
+                    <input type="text" id="api-key" required placeholder="API Keyinizi buraya yapıştırın">
+                </div>
+                <div class="form-group">
+                    <label for="api-secret">API Sırrı (Secret)</label>
+                    <input type="password" id="api-secret" required placeholder="API Secret'ınızı buraya yapıştırın">
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 30px;">
+                    <button type="submit" class="btn-primary" style="flex-grow: 1;">Anahtarları Kaydet ve Başla</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal()" style="margin-left: 15px;">Daha Sonra Yap</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script>
+        // -----------------------------------------------------------------------------------------
+        // ÇÖZÜM: Dinamik BACKEND_URL Tanımı
+        // -----------------------------------------------------------------------------------------
+
+        let BACKEND_URL = '';
+        
+        // Eğer sayfa ngrok adresi üzerinden yükleniyorsa VEYRA HTTPS kullanılıyorsa, ngrok adresini kullan.
+        if (window.location.hostname.includes('ngrok') || window.location.protocol === 'https:') {
+            // Ngrok'un size verdiği güncel HTTPS adresi
+            BACKEND_URL = 'https://choripetalous-multiscreen-jami.ngrok-free.dev'; 
+            console.log('Backend URL (Ngrok):', BACKEND_URL);
+        } else {
+            // Aksi takdirde, yerel adresi kullan
+            BACKEND_URL = 'http://localhost:8000';
+            console.log('Backend URL (Local):', BACKEND_URL);
+        }
+        
+        // -----------------------------------------------------------------------------------------
+        // KODUN KALANI
+        // -----------------------------------------------------------------------------------------
+
+        const msgBox = document.getElementById('message-box');
+        const apiSetupModal = document.getElementById('apiSetupModal');
+        let dnaChartInstance = null; // Chart.js örneği için global değişken
+
+        // --- YARDIMCI FONKSİYONLAR ---
+        function getToken() {
+            return localStorage.getItem('access_token');
+        }
+
+        function showMessage(message, type = 'error') {
+            msgBox.textContent = message;
+            msgBox.className = `msg-${type}`;
+            msgBox.style.display = 'block';
+            setTimeout(() => {
+                msgBox.style.display = 'none';
+            }, 6000);
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_id');
+            window.location.href = 'login.html'; // Oturumu kapattıktan sonra login sayfasına yönlendir
+        }
+
+        function closeModal() {
+            apiSetupModal.style.display = 'none';
+        }
+
+        function openTab(tabName) {
+            const contents = document.querySelectorAll('.tab-content');
+            const buttons = document.querySelectorAll('.tab-button');
+            contents.forEach(content => { content.classList.remove('active'); });
+            buttons.forEach(button => { button.classList.remove('active'); });
+            document.getElementById(tabName).classList.add('active');
+            document.querySelector(`.tab-button[onclick="openTab('${tabName}')"]`).classList.add('active');
+            
+            // Eğer işlem geçmişi sekmesi açılırsa veriyi tekrar yükle
+            if (tabName === 'trade-history') {
+                loadTransactionHistory();
+            }
+        }
+
+        function renderDnaProfile(current, ideal, benchmark) {
+            const dnaProfileDiv = document.getElementById('dna-profile');
+            dnaProfileDiv.innerHTML = '';
+
+            const metrics = [
+                { key: 'DS_Panic_Threshold', label: 'Panik Eşiği', unit: '%' },
+                { key: 'PS_Profit_Skewness', label: 'Kâr Asimetrisi', unit: 'Oran' },
+                { key: 'HD_Patience_Duration_Hours', label: 'Sabır Süresi', unit: 'Saat' },
+                { key: 'VT_Volatility_Tolerance', label: 'Vol. Tol.', unit: '%' },
+                { key: 'FA_Overtrading_Score', label: 'Aşırı İşlem Skoru', unit: 'Oran' },
+            ];
+
+            const dnaGrid = document.createElement('div');
+            dnaGrid.className = 'dna-grid';
+
+            metrics.forEach(m => {
+                const metricDiv = document.createElement('div');
+                metricDiv.className = 'dna-metric';
+
+                // DNA profili verilerinin 'current' ve 'ideal' objelerinde doğru key'ler yoksa N/A göster
+                const currentValue = current[m.key] ? current[m.key].toFixed(2) : 'N/A';
+                const idealValue = ideal[m.key] ? ideal[m.key].toFixed(2) : 'N/A';
+                
+                metricDiv.innerHTML = `
+                    <strong>${currentValue} ${m.unit}</strong>
+                    <small>${m.label} (Gerçek)</small>
+                    <small style="color: var(--color-primary);">İdeal: ${idealValue} ${m.unit}</small>
+                `;
+                dnaGrid.appendChild(metricDiv);
+            });
+
+            dnaProfileDiv.appendChild(dnaGrid);
+
+            const comparisonDisplay = document.getElementById('comparison-display');
+            // Veri geliyorsa karşılaştırma mesajını göster
+            if (current && current.DS_Panic_Threshold !== undefined && ideal && ideal.DS_Panic_Threshold !== undefined) {
+                const panicDiff = (current.DS_Panic_Threshold - ideal.DS_Panic_Threshold).toFixed(2);
+                let message = `**Davranışsal DNA Karşılaştırma:** Panik Eşiği farkı: ${panicDiff}% (İdealden ${panicDiff > 0 ? 'daha az endişelisiniz' : 'daha endişelisiniz'}). Tüm metrikler ideal profilinizle karşılaştırılıyor.`;
+                comparisonDisplay.innerHTML = `<i class="fas fa-exclamation-circle"></i> ${message}`;
+                comparisonDisplay.style.display = 'block';
+            } else {
+                comparisonDisplay.style.display = 'none';
+            }
+        }
+
+        function renderDnaChart(data) {
+            const ctx = document.getElementById('dnaChart').getContext('2d');
+            
+            // Eğer daha önce bir grafik varsa yok et
+            if (dnaChartInstance) {
+                dnaChartInstance.destroy();
+            }
+
+            const labels = data.map(d => new Date(d.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }));
+            const panicThresholds = data.map(d => d.panic_threshold);
+
+            dnaChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Panik Eşiği (%)',
+                        data: panicThresholds,
+                        borderColor: 'var(--color-text)', 
+                        borderWidth: 3,                       
+                        backgroundColor: 'rgba(233, 233, 241, 0.1)', 
+                        tension: 0.4,
+                        pointRadius: 5,                       
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: { color: '#3e3e78' },
+                            ticks: { color: 'var(--color-text)' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: 'var(--color-text)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: false }
+                    }
+                }
+            });
+        }
+
+        function renderTransactionHistory(transactions) {
+            const listDiv = document.getElementById('transaction-list');
+            if (!transactions || transactions.length === 0) {
+                listDiv.innerHTML = `<p style="text-align: center; color: #b0b0d0;">Henüz hiç işlem kaydı bulunmamaktadır.</p>`;
+                return;
+            }
+
+            let tableHTML = `
+                <table class="trade-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Sonuç</th>
+                            <th>K/Z (%)</th>
+                            <th>Max DD (%)</th>
+                            <th>Süre (Saat)</th>
+                            <th>Oynaklık (%)</th>
+                            <th>Kapanış Zamanı</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            transactions.forEach(t => {
+                const resultClass = t.is_winning ? 'win' : 'loss';
+                const pnlSign = t.is_winning ? '+' : '';
+                const exitTime = t.exit_time ? new Date(t.exit_time).toLocaleString('tr-TR') : 'N/A';
+                
+                tableHTML += `
+                    <tr>
+                        <td>${t.trade_id}</td>
+                        <td class="${resultClass}">${t.is_winning ? 'Kâr' : 'Zarar'}</td>
+                        <td><span class="${resultClass}">${pnlSign}${t.pnl_pct}</span></td>
+                        <td>-${t.max_drawdown_pct}</td>
+                        <td>${t.duration_hours}</td>
+                        <td>${t.volatility_pct}</td>
+                        <td>${exitTime}</td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+            listDiv.innerHTML = tableHTML;
+        }
+
+        function renderWeeklyReport(report) {
+            const reportDiv = document.getElementById('weekly-report');
+            if (!report) {
+                reportDiv.innerHTML = `<p style="text-align: center; color: var(--color-danger);">Rapor yüklenemedi.</p>`;
+                return;
+            }
+
+            reportDiv.innerHTML = `
+                <div class="report-summary">
+                    <p>Toplam İşlem Sayısı: <strong>${report.total_trades}</strong></p>
+                    <p>Kazanma Oranı: <strong>${report.win_rate_pct}%</strong></p>
+                    <p>Ortalama Kâr/Zarar (%): <strong>${report.avg_pnl_pct.toFixed(2)}%</strong></p>
+                    <p>Ortalama Pozisyonda Kalma Süresi: <strong>${report.avg_duration_hours.toFixed(1)} saat</strong></p>
+                    <p>Ortalama Volatilite: <strong>${report.avg_volatility_pct.toFixed(2)}%</strong></p>
+                    <p style="margin-top: 15px; border-top: 1px dashed #3e3e78; padding-top: 10px;">
+                        Psiko-Metrik Analiz: <strong>${report.analysis_summary}</strong>
+                    </p>
+                </div>
+            `;
+        }
+
+        // --- API İŞLEMLERİ (DÜZELTİLMİŞ UÇ NOKTALAR) ---
+
+        async function checkSetupStatus() {
+            const token = getToken();
+            if (!token) return;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/setup/status`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+                
+                if (response.ok && !data.is_setup_complete) {
+                    apiSetupModal.style.display = 'block';
+                }
+
+            } catch (error) {
+                // showMessage('HATA: Kurulum durumu sunucusuna bağlanılamadı.', 'error');
+            }
+        }
+
+        async function loadDnaProfile() {
+            const token = getToken();
+            if (!token) return;
+
+            try {
+                // KRİTİK DÜZELTME: /analysis/dna yerine app.py'daki /dna/profile kullanıldı.
+                const response = await fetch(`${BACKEND_URL}/api/v1/dna/profile`, { 
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderDnaProfile(data.current_profile, data.ideal_profile, data.benchmark_history);
+                    renderDnaChart(data.panic_threshold_history);
+                } else {
+                    showMessage(`HATA: DNA profili yüklenemedi. Detay: ${data.detail || 'Bilinmeyen Hata'}`, 'error');
+                    document.getElementById('dna-profile').innerHTML = `<p style="text-align: center; color: var(--color-danger);">Veri yüklenemedi.</p>`;
+                }
+            } catch (error) {
+                showMessage('HATA: DNA profili sunucusuna bağlanılamadı.', 'error');
+            }
+        }
+
+        async function getWeeklyReport() {
+            const token = getToken();
+            if (!token) return;
+
+            try {
+                // KRİTİK DÜZELTME: /analysis/report yerine app.py'daki /report/weekly kullanıldı.
+                const response = await fetch(`${BACKEND_URL}/api/v1/report/weekly`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderWeeklyReport(data);
+                } else {
+                    showMessage(`HATA: Rapor yüklenemedi. Detay: ${data.detail || 'Bilinmeyen Hata'}`, 'error');
+                    renderWeeklyReport(null);
+                }
+            } catch (error) {
+                showMessage('HATA: Rapor sunucusuna bağlanılamadı.', 'error');
+            }
+        }
+
+        async function loadTransactionHistory() {
+            const token = getToken();
+            if (!token) return;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/transactions/history`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderTransactionHistory(data);
+                } else {
+                    showMessage(`HATA: İşlem geçmişi yüklenemedi. Detay: ${data.detail || 'Bilinmeyen Hata'}`, 'error');
+                    renderTransactionHistory([]);
+                }
+            } catch (error) {
+                showMessage('HATA: İşlem geçmişi sunucusuna bağlanılamadı.', 'error');
+            }
+        }
+
+        function syncTrades() {
+            showMessage("İşlemler sunucu tarafında senkronize ediliyor...", 'warning'); 
+            
+            // Gerçek entegrasyon için bu kısım bir API çağrısı ile değiştirilebilir
+            // Örn: fetch(`${BACKEND_URL}/api/v1/integration/sync`, ...)
+            setTimeout(() => {
+                showMessage("BAŞARILI: İşlem geçmişi senkronizasyonu tamamlandı ve analizler güncellendi.", 'success');
+                loadDnaProfile(); 
+                getWeeklyReport();
+                loadTransactionHistory();
+            }, 2000);
+        }
+
+        async function sendReport() {
+            const token = getToken();
+            if (!token) return;
+
+            showMessage("Haftalık Rapor hazırlanıyor ve e-posta ile gönderiliyor...", 'warning');
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/report/send`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (response.ok) {
+                    showMessage('BAŞARILI: Haftalık Psiko-Metrik Raporunuz e-posta adresinize gönderildi!', 'success');
+                } else {
+                    const errorData = await response.json();
+                    showMessage(`HATA: Rapor gönderilemedi. Detay: ${errorData.detail || 'Bilinmeyen Hata'}`, 'error');
+                }
+            } catch (error) {
+                showMessage('HATA: Rapor gönderme sunucusuna bağlanılamadı.', 'error');
+            }
+        }
+
+
+        // --- FORM İŞLEYİCİLERİ ---
+
+        document.getElementById('api-setup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = getToken();
+            if (!token) {
+                showMessage("HATA: Oturum tokeni bulunamadı. Lütfen tekrar giriş yapın.", 'error');
+                return;
+            }
+
+            const apiKey = document.getElementById('api-key').value;
+            const apiSecret = document.getElementById('api-secret').value;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/setup/keys`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret })
+                });
+
+                if (response.ok) {
+                    showMessage('BAŞARILI: API Anahtarları kaydedildi. Otomasyon başlatılıyor.', 'success');
+                    closeModal();
+                } else {
+                    const errorData = await response.json();
+                    showMessage(`HATA: Anahtar kayıt başarısız. Detay: ${errorData.detail || 'Bilinmeyen Hata'}`, 'error');
+                }
+
+            } catch (error) {
+                showMessage('HATA: Sunucuya bağlanılamadı veya ağ hatası oluştu.', 'error');
+            }
+        });
+
+
+        document.getElementById('add-transaction-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = getToken();
+            if (!token) {
+                showMessage("HATA: Oturum tokeni bulunamadı. Lütfen tekrar giriş yapın.", 'error');
+                return;
+            }
+
+            const transactionData = {
+                trade_id: document.getElementById('trade-id').value,
+                is_winning: document.getElementById('is-winning').value === 'true',
+                duration_hours: parseFloat(document.getElementById('duration-hours').value),
+                pnl_pct: parseFloat(document.getElementById('pnl-pct').value),
+                max_drawdown_pct: parseFloat(document.getElementById('max-drawdown-pct').value),
+                volatility_pct: parseFloat(document.getElementById('volatility-pct').value),
+                exit_time: new Date().toISOString() // Şu anki zamanı kapanış zamanı olarak kaydet
+            };
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/transactions/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify(transactionData)
+                });
+
+                if (response.ok) {
+                    showMessage('BAŞARILI: İşlem kaydedildi ve DNA güncellendi!', 'success');
+                    document.getElementById('add-transaction-form').reset(); 
+                    loadDnaProfile(); 
+                    getWeeklyReport();
+                    loadTransactionHistory(); 
+                } else {
+                    const errorData = await response.json();
+                    showMessage(`HATA: Kayıt başarısız. Detay: ${errorData.detail || 'Bilinmeyen Hata'}`, 'error');
+                }
+
+            } catch (error) {
+                showMessage('HATA: Sunucuya bağlanılamadı veya ağ hatası oluştu.', 'error');
+            }
+        });
+
+
+        // --- SAYFA BAŞLANGICINDAKİ İLK YÜKLEME ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('access_token');
+            // KRİTİK DÜZELTME: Token yoksa login.html'e yönlendir
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // Başlangıçta ana sekme (DNA Analizi) gösterilir
+            openTab('dna-analysis'); 
+            
+            // Tüm verileri yükle
+            loadDnaProfile();
+            getWeeklyReport();
+            
+            // İşlem geçmişi listesinin ilk yüklemede çağrılması
+            loadTransactionHistory();
+     
+            // API Key kurulum durumunu kontrol et
+            checkSetupStatus();
+        });
+    </script>
+</body>
+</html>

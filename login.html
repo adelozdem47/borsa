@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giriş / Kayıt | TradeMirror Auth Portal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+    <style>
+        /* CSS Değişkenleri (index.html ile uyumlu) */
+        :root {
+            --bg-dark: #0a0a1a;
+            --bg-card: #14142a;
+            --color-primary: #00bcd4; /* Teal/Mavi */
+            --color-secondary: #8e8dff; /* Mor/Mavi ton */
+            --color-text: #e9e9f1;
+            --color-danger: #ff6b6b;
+            --color-success: #38c172;
+            --border-radius: 12px;
+            --box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            --input-bg: #1a1a33;
+        }
+
+        /* Genel Stil */
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--color-text);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-y: auto;
+        }
+
+        .auth-container {
+            background-color: var(--bg-card);
+            padding: 40px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .logo {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.2rem;
+            color: var(--color-primary);
+            margin-bottom: 25px;
+            letter-spacing: 1px;
+        }
+
+        .logo span {
+            color: var(--color-secondary);
+        }
+
+        .form-switch {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 25px;
+        }
+
+        .switch-btn {
+            background: none;
+            border: none;
+            color: var(--color-text);
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: color 0.3s, border-bottom 0.3s;
+        }
+
+        .switch-btn.active {
+            color: var(--color-primary);
+            border-bottom: 3px solid var(--color-primary);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 300;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--input-bg);
+            border: 1px solid #333355;
+            border-radius: 8px;
+            color: var(--color-text);
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            border-color: var(--color-primary);
+            outline: none;
+        }
+
+        .auth-btn {
+            width: 100%;
+            padding: 15px;
+            background-color: var(--color-primary);
+            color: var(--bg-dark);
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+
+        .auth-btn:hover {
+            background-color: #0099ad;
+        }
+
+        .auth-btn:active {
+            transform: scale(0.99);
+        }
+
+        /* Mesaj Alanı */
+        #message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 700;
+            display: none; /* Başlangıçta gizli */
+        }
+
+        .message-success {
+            background-color: rgba(56, 193, 114, 0.15);
+            color: var(--color-success);
+        }
+
+        .message-error {
+            background-color: rgba(255, 107, 107, 0.15);
+            color: var(--color-danger);
+        }
+
+        /* Sosyal Giriş */
+        .social-login {
+            margin-top: 30px;
+            border-top: 1px solid #222244;
+            padding-top: 20px;
+        }
+
+        .social-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+
+        .google-btn {
+            background-color: #4285F4;
+            color: white;
+        }
+        
+        /* Form Geçişleri */
+        .form-content {
+            display: none;
+            animation: fadeIn 0.5s;
+        }
+
+        .form-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="auth-container">
+        <div class="logo">TradeMirror<span>Global</span></div>
+        
+        <div id="message" style="display: none;"></div>
+
+        <div class="form-switch">
+            <button id="login-switch" class="switch-btn active" onclick="toggleForm('login')">Giriş Yap</button>
+            <button id="register-switch" class="switch-btn" onclick="toggleForm('register')">Kayıt Ol</button>
+        </div>
+
+        <div id="login-form-content" class="form-content active">
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email"><i class="fas fa-envelope"></i> E-posta</label>
+                    <input type="email" id="login-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password"><i class="fas fa-lock"></i> Şifre</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit" class="auth-btn">Giriş Yap</button>
+            </form>
+        </div>
+
+        <div id="register-form-content" class="form-content">
+            <form id="register-form">
+                <div class="form-group">
+                    <label for="register-email"><i class="fas fa-envelope"></i> E-posta</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password"><i class="fas fa-lock"></i> Şifre</label>
+                    <input type="password" id="register-password" required>
+                </div>
+                <button type="submit" class="auth-btn">Kayıt Ol</button>
+            </form>
+        </div>
+        
+        </div>
+
+    <script>
+        // -----------------------------------------------------------------------------------------
+        // ÇÖZÜM: Dinamik BACKEND_URL Tanımı
+        // Projenin hem yerel (localhost) hem de dış (ngrok) ortamda çalışması için ayarlandı.
+        // -----------------------------------------------------------------------------------------
+
+        let BACKEND_URL = '';
+        
+        // Eğer sayfa ngrok adresi üzerinden yükleniyorsa VEYA HTTPS kullanılıyorsa, ngrok adresini kullan.
+        // Ngrok URL'si: https://choripetalous-multiscreen-jami.ngrok-free.dev
+        if (window.location.hostname.includes('ngrok') || window.location.protocol === 'https:') {
+            BACKEND_URL = 'https://choripetalous-multiscreen-jami.ngrok-free.dev'; 
+            console.log('Backend URL (Ngrok):', BACKEND_URL);
+        } else {
+            // Aksi takdirde, yerel adresi kullan (Mac'te çalışırken)
+            BACKEND_URL = 'http://localhost:8000';
+            console.log('Backend URL (Local):', BACKEND_URL);
+        }
+
+
+        // --- 1. YARDIMCI FONKSİYONLAR ---
+
+        const messageEl = document.getElementById('message');
+
+        function showMessage(text, type) {
+            messageEl.textContent = text;
+            messageEl.className = `message message-${type}`;
+            messageEl.style.display = 'block';
+            
+            // 5 saniye sonra mesajı gizle
+            setTimeout(() => {
+                messageEl.style.display = 'none';
+            }, 5000);
+        }
+
+        function toggleForm(formType) {
+            document.getElementById('login-form-content').classList.remove('active');
+            document.getElementById('register-form-content').classList.remove('active');
+            document.getElementById('login-switch').classList.remove('active');
+            document.getElementById('register-switch').classList.remove('active');
+
+            if (formType === 'login') {
+                document.getElementById('login-form-content').classList.add('active');
+                document.getElementById('login-switch').classList.add('active');
+            } else {
+                document.getElementById('register-form-content').classList.add('active');
+                document.getElementById('register-switch').classList.add('active');
+            }
+            messageEl.style.display = 'none'; // Form değişince mesajı gizle
+        }
+
+
+        // --- 2. KAYIT OL İŞLEMİ ---
+
+        document.getElementById('register-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('register-email').value;
+            const password = document.getElementById('register-password').value;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/users/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email: email, password: password }),
+                });
+
+                if (response.ok) {
+                    showMessage("Kayıt Başarılı! Lütfen giriş yapın.", 'success');
+                    document.getElementById('register-form').reset();
+                    toggleForm('login'); // Başarılı kayıttan sonra Giriş formuna geç
+                } else {
+                    const errorData = await response.json();
+                    showMessage(`Kayıt Başarısız: ${errorData.detail || 'Bilinmeyen Hata'}`, 'error');
+                }
+
+            } catch (error) {
+                console.error("Kayıt hatası:", error);
+                showMessage("Sunucuya bağlanılamadı. Lütfen sunucuyu kontrol edin.", 'error');
+            }
+        });
+
+
+        // --- 3. GİRİŞ YAP İŞLEMİ ---
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+
+            const formData = new URLSearchParams();
+            formData.append('username', email); // FastAPI OAuth2'de 'username' beklenir
+            formData.append('password', password);
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/v1/token`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: formData.toString(),
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    localStorage.setItem('access_token', data.access_token);
+                    
+                    // Token aldıktan sonra ana sayfaya yönlendir
+                    window.location.href = 'index.html'; 
+                } else {
+                    showMessage("Giriş Başarısız: Hatalı e-posta veya şifre.", 'error');
+                }
+
+            } catch (error) {
+                console.error("Giriş hatası:", error);
+                showMessage("Sunucuya bağlanılamadı. Lütfen sunucuyu kontrol edin.", 'error');
+            }
+        });
+
+        // --- 4. SOSYAL GİRİŞ (KALDIRILDI) ---
+        // socialLogin fonksiyonu artık çağrılmıyor/kullanılmıyor
+
+        document.addEventListener('DOMContentLoaded', () => {
+             // Başlangıçta Giriş formunu göster
+             toggleForm('login');
+        });
+    </script>
+</body>
+</html>

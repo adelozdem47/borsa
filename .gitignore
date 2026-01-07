@@ -1,0 +1,16 @@
+# Veritabanı dosyası (Hassas veri içerebilir ve büyük olabilir)
+trademirror.db
+# Python ortam dosyaları
+__pycache__/
+*.pyc
+# Sanal ortamlar
+venv/
+.venv/
+# Log dosyaları
+*.log
+# Celery için kullanılan dosyalar
+celery_worker.py
+# API key ve şifre gibi hassas bilgileri tutan dosyaların adları
+# (app.py'de şifreyi kodda tuttuğunuz için bu dosya yüklenecek,
+# ancak prodüksiyonda bunu .env dosyasına alıp onu ignore etmek gerekir.)
+.env
