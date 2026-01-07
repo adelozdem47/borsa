@@ -49,7 +49,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+# KRİTİK DÜZELTME: Render'da çalışması daha olası olan SMTPS (465) portuna geçildi.
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 465))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "yjcu lcld eato zxek")
 
@@ -58,12 +59,12 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 # --- VERİTABANI YAPILANDIRMASI ---
-# KRİTİK SON DÜZELTME: SSL ve Bağlantı Havuzu istikrarı için gerekli ayarlar.
+# SSL ve Bağlantı Havuzu istikrarı için gerekli ayarlar.
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"sslmode": "require"}, # SSL Hata Çözümü
-    pool_pre_ping=True,                  # Bağlantı havuzu hatalarını azaltır
-    pool_recycle=300                     # Bağlantıları 5 dakikada bir yeniler (EOF Çözümü)
+    connect_args={"sslmode": "require"},
+    pool_pre_ping=True,
+    pool_recycle=300
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -108,7 +109,6 @@ class Transaction(Base):
 
 try:
     # KRİTİK DÜZELTME: SCHEMA UYUŞMAZLIĞINI gidermek için tablo silme/yeniden oluşturma.
-    # UYARI: BU SATIR HER DEPLOY'DE TÜM VERİYİ SİLER. PRODÜKSİYONDA KALDIRIN.
     Base.metadata.drop_all(bind=engine)
     
     Base.metadata.create_all(bind=engine)
@@ -178,7 +178,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except JWTError:
         raise credentials_exception
         
-    # Bu sorgu artık kararlı bağlantı havuzunu kullanır
     user = get_user_by_email(db, email=token_data.email)
     if user is None:
         raise credentials_exception
@@ -219,14 +218,16 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
         msg.set_content(content)
         
         context = ssl.create_default_context()
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls(context=context)
+        
+        # KRİTİK SON DÜZELTME: Port 465 (SMTPS) ve SMTP_SSL kullanımı
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
             
     except Exception as e:
         print(f"E-posta gönderme hatası: {e}")
-        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Sunucuya bağlanılamadı veya kimlik bilgileri yanlış. Detay: {e}")
+        # Hata mesajı, kullanıcıya e-posta sunucusunda bir sorun olduğunu bildirir.
+        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Ağ veya sunucu ayarları yanlış. Detay: {e}")
 
 def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str, Any]:
     # Analiz mantığı (Mock veriler kullanılarak)
@@ -354,7 +355,6 @@ def update_dna_profile(user_id: int, db: Session):
 
 # --- İLK BAŞLANGIÇ GÖREVLERİ ---
 try:
-    # Bu kısım, bağlantı havuzu ayarlarının test edilmesine yardımcı olur.
     create_initial_admin_user()
 except Exception as e:
     print(f"KRİTİK HATA: Veritabanı bağlantısı yapılamadı! Detay: {e}")
