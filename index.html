@@ -349,7 +349,8 @@
         // 1. Durum: Ngrok veya Güvenli (HTTPS) bağlantı
         if (hostname.includes('ngrok') || protocol === 'https:') {
             // Ngrok adresi değişirse bu kısmı güncellemelisiniz.
-            BACKEND_URL = 'https://choripetalous-multiscreen-jami.ngrok-free.dev'; 
+            // DÜZELTME: Render'ın kendi adresi kullanılıyor
+            BACKEND_URL = 'https://borsa-xeqq.onrender.com'; 
             console.log('Backend URL (Ngrok/HTTPS):', BACKEND_URL);
         } 
         // 2. Durum: IP Adresi üzerinden erişim (KRİTİK DÜZELTME)
@@ -360,7 +361,7 @@
         } 
         // 3. Durum: Yerel Geliştirme (http://localhost)
         else {
-            BACKEND_URL = `http://localhost:${defaultBackendPort}`;
+            BACKEND_URL = `https://borsa-xeqq.onrender.com`;
             console.log('Backend URL (Localhost):', BACKEND_URL);
         }
         
