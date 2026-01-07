@@ -9,6 +9,7 @@ h11==0.16.0
 python-jose==3.5.0
 passlib==1.7.4
 
+python-multipart
 # Veritabanı (SQLAlchemy) ve Pydantic Modelleri
 SQLAlchemy==2.0.43
 pydantic==2.12.5
