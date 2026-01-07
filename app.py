@@ -58,10 +58,12 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 # --- VERİTABANI YAPILANDIRMASI ---
-# SSL HATA DÜZELTMESİ: Render gibi bulut platformlarında SSL hatasını çözmek için 'sslmode=require' eklendi.
+# KRİTİK SON DÜZELTME: SSL ve Bağlantı Havuzu istikrarı için gerekli ayarlar.
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"sslmode": "require"}
+    connect_args={"sslmode": "require"}, # SSL Hata Çözümü
+    pool_pre_ping=True,                  # Bağlantı havuzu hatalarını azaltır
+    pool_recycle=300                     # Bağlantıları 5 dakikada bir yeniler (EOF Çözümü)
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -72,9 +74,7 @@ class User(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    # TİP DÜZELTMESİ: Boolean tipi kullanıldı.
     setup_complete = Column(Boolean, default=False)
-    # TİP DÜZELTMESİ: Boolean tipi kullanıldı.
     is_active = Column(Boolean, default=True)
     api_key = Column(Text, nullable=True)
     api_secret = Column(Text, nullable=True)
@@ -107,15 +107,13 @@ class Transaction(Base):
     emotion_at_exit = Column(String)
 
 try:
-    # 🚨 KRİTİK DÜZELTME 5: SCHEMA UYUŞMAZLIĞINI (UndefinedColumn) gidermek için tablo silme/yeniden oluşturma eklendi.
-    # UYARI: BU, HER DEPLOY'DE TÜM VERİYİ SİLER. Geliştirme/Test aşamasında tutulmalıdır.
-    # PRODÜKSİYONDA BU SATIR KALDIRILMALIDIR!
+    # KRİTİK DÜZELTME: SCHEMA UYUŞMAZLIĞINI gidermek için tablo silme/yeniden oluşturma.
+    # UYARI: BU SATIR HER DEPLOY'DE TÜM VERİYİ SİLER. PRODÜKSİYONDA KALDIRIN.
     Base.metadata.drop_all(bind=engine)
     
     Base.metadata.create_all(bind=engine)
 except OperationalError as e:
-    # Bu hata, veritabanı servisine bağlanılamadığında ortaya çıkar.
-    print(f"KRİTİK HATA: Veritabanı bağlantı hatası! Lütfen PostgreSQL sunucunuzun çalıştığından emin olun. Detay: {e}")
+    print(f"KRİTİK HATA: Veritabanı bağlantı hatası! Detay: {e}")
 
 
 # --- Pydantic Modelleri ---
@@ -163,7 +161,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 def get_user_by_email(db: Session, email: str):
-    # Bu sorgu artık yeni ve doğru şemayı (setup_complete dahil) kullanacaktır.
     return db.query(User).filter(User.email == email).first()
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -181,6 +178,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     except JWTError:
         raise credentials_exception
         
+    # Bu sorgu artık kararlı bağlantı havuzunu kullanır
     user = get_user_by_email(db, email=token_data.email)
     if user is None:
         raise credentials_exception
@@ -278,7 +276,6 @@ def create_initial_admin_user():
     INITIAL_PASSWORD = "admin123"
 
     try:
-        # get_user_by_email artık doğru kolonları kullanır.
         user_exists = get_user_by_email(db, email=INITIAL_EMAIL)
         
         if not user_exists:
@@ -305,7 +302,6 @@ def create_initial_admin_user():
         else:
              print(f"INFO: Yönetici kullanıcı ('{INITIAL_EMAIL}') zaten mevcut.")
     except Exception as e:
-        # Hata yakalama, veritabanı bağlantı sorunlarını gösterir.
         print(f"HATA: Başlangıç kullanıcı oluşturulurken veya veritabanı sorgulanırken bir hata oluştu: {e}")
     finally:
         db.close()
@@ -357,12 +353,11 @@ def update_dna_profile(user_id: int, db: Session):
 
 
 # --- İLK BAŞLANGIÇ GÖREVLERİ ---
-# Veritabanı bağlantısı başarılıysa, yönetici kullanıcıyı oluştur.
 try:
+    # Bu kısım, bağlantı havuzu ayarlarının test edilmesine yardımcı olur.
     create_initial_admin_user()
 except Exception as e:
-    # Bu hata, veritabanı bağlantı dizesi tamamen yanlışsa veya servis kapalıysa yakalanır.
-    print(f"KRİTİK HATA: Veritabanı bağlantısı yapılamadı! Lütfen PostgreSQL sunucunuzu kontrol edin ve '{DATABASE_URL}' adresinin doğru olduğunu doğrulayın. Detay: {e}")
+    print(f"KRİTİK HATA: Veritabanı bağlantısı yapılamadı! Detay: {e}")
 
 
 # --- FASTAPI UYGULAMASI ---
@@ -373,10 +368,8 @@ app = FastAPI(
 )
 
 # --- UZAKTAN ERİŞİM ÇÖZÜMÜ ---
-# Statik dosyaları /static öneki altına taşır.
 app.mount("/static", StaticFiles(directory="."), name="static")
 
-# Kök dizini login sayfasına yönlendirir.
 @app.get("/", include_in_schema=False)
 async def root():
     return RedirectResponse(url="/static/login.html")
