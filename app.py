@@ -64,7 +64,7 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"sslmode": "require"},
     pool_pre_ping=True,
-    pool_recycle=300
+    pool_recycle=60                     # <<<< BURADA 60 OLARAK DEĞİŞTİRİLDİ >>>>
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -219,7 +219,7 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
         
         context = ssl.create_default_context()
         
-        # KRİTİK SON DÜZELTME: Port 465 (SMTPS) ve SMTP_SSL kullanımı
+        # Port 465 (SMTPS) ve SMTP_SSL kullanımı
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
