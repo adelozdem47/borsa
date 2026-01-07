@@ -39,97 +39,87 @@ from passlib.context import CryptContext
 
 # --- ORTAM DEĞİŞKENLERİ VE SABİTLER (Prodüksiyon Ayarları) ---
 
-# KRİTİK GÜNCELLEME: İstenen PostgreSQL bağlantı dizesi varsayılan olarak ayarlanmıştır.
-# Kullanıcı Adı: postgres (genellikle varsayılan), Şifre: admin123, DB Adı: borsa
-# Localhost ve 5432 portu varsayılmıştır.
-# NOT: Bu şifre koda gömüldüğü için güvenlik riski taşır.
+# Veritabanı URL'sini Ortam Değişkeninden al, yoksa yerel varsayılanı kullan (CRITICAL)
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:admin123@localhost:5432/borsa")
-
-# JWT Gizli Anahtarı
-SECRET_KEY = os.environ.get("SECRET_KEY", "GÜÇLÜ-UZUN-SECRET-KEY-BURAYA-KOYULMALI-PROD-ORTAMINDA")
+SECRET_KEY = os.environ.get("SECRET_KEY", "gizli-anahtariniz-burada-olmalidir-RENDER_ENV")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 Hafta
 
-# SMTP (E-posta) Ayarları
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "yjcu lcld eato zxek")
+# E-posta Ayarları (Gelecekteki ölçekleme için)
+EMAIL_SENDER = os.environ.get("EMAIL_SENDER", "trademirror_noreply@mail.com")
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "varsayilan_email_sifresi")
+EMAIL_SMTP_SERVER = os.environ.get("EMAIL_SMTP_SERVER", "smtp.gmail.com")
+EMAIL_SMTP_PORT = int(os.environ.get("EMAIL_SMTP_PORT", 587))
 
-# --- GÜVENLİK ARAÇLARI ---
-pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
+
+# --- GÜVENLİK YAPILANDIRMALARI ---
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
-# --- VERİTABANI YAPILANDIRMASI ---
-# PostgreSQL için connect_args gerekmez, bu yüzden koşullu olarak kaldırıldı.
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password):
+    return pwd_context.hash(password)
+
+# --- JWT OLUŞTURMA VE KOD ÇÖZME ---
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+# --- VERİTABANI MODELİ VE BAĞLANTISI ---
+
 Base = declarative_base()
 
-# --- VERİTABANI MODELLERİ ---
 class User(Base):
     __tablename__ = "users"
     user_id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    is_active = Column(Integer, default=1)
-    api_key = Column(Text, nullable=True)
-    api_secret = Column(Text, nullable=True)
-    exchange = Column(String, nullable=True)
-
-class DnaProfile(Base):
-    __tablename__ = "dna_profiles"
-    profile_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, unique=True, index=True)
-    risk_tolerance = Column(String, default="ORTA")
-    dominant_emotion = Column(String, default="Nötr")
-    overtrading_tendency = Column(Float, default=0.0)
-    patience_score = Column(Float, default=0.0)
-    consistency_score = Column(Float, default=0.0)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(bool, default=True)
+    api_key_encrypted = Column(Text, nullable=True) # Şifrelenmiş olarak saklanacak
+    api_secret_encrypted = Column(Text, nullable=True)
+    setup_complete = Column(bool, default=False)
 
 class Transaction(Base):
     __tablename__ = "transactions"
-    trade_id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, index=True)
-    symbol = Column(String)
-    entry_price = Column(Float)
-    exit_price = Column(Float)
-    size = Column(Float)
-    entry_time = Column(DateTime)
-    exit_time = Column(DateTime)
-    pnl_pct = Column(Float)
-    max_drawdown_pct = Column(Float)
-    duration_minutes = Column(Float)
-    emotion_at_exit = Column(String)
+    transaction_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer)
+    trade_id = Column(String, index=True, nullable=True) # Borsa işlem ID'si veya manuel
+    is_winning = Column(bool)
+    pnl_pct = Column(Float) # Kâr/Zarar Yüzdesi
+    max_drawdown_pct = Column(Float) # Pozisyon içindeki maksimum kayıp çekme
+    duration_hours = Column(Float) # Pozisyonda kalma süresi (saat)
+    volatility_pct = Column(Float) # İşlem sırasındaki ortalama oynaklık
+    exit_time = Column(DateTime, default=datetime.utcnow)
 
-try:
-    Base.metadata.create_all(bind=engine)
-except OperationalError as e:
-    # Bu hata, veritabanı servisine bağlanılamadığında ortaya çıkar.
-    print(f"KRİTİK HATA: Veritabanı bağlantı hatası! Lütfen PostgreSQL sunucunuzun çalıştığından emin olun. Detay: {e}")
+class DNAMetric(Base):
+    __tablename__ = "dna_metrics"
+    metric_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer)
+    metric_name = Column(String, index=True)
+    value = Column(Float)
+    is_ideal = Column(bool, default=False) # İdeal profil mi yoksa gerçek mi?
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
+class DNAProfile(Base):
+    __tablename__ = "dna_profiles"
+    profile_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, unique=True)
+    risk_tolerance = Column(String, default="Moderate")
+    dominant_emotion = Column(String, default="Neutral")
+    last_updated = Column(DateTime, default=datetime.utcnow)
 
-# --- Pydantic Modelleri ---
-class UserBase(BaseModel):
-    email: EmailStr
-
-class UserCreate(UserBase):
-    password: str
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-class TokenData(BaseModel):
-    email: Optional[str] = None
-
-class SetupApiKey(BaseModel):
-    api_key: str
-    api_secret: str
-    exchange: str
-
-# --- GEREKSİNİM BAĞIMLILIKLARI ve YARDIMCI FONKSİYONLAR ---
+# Engine, Session ve Veritabanı Bağlantısı
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
     db = SessionLocal()
@@ -138,26 +128,111 @@ def get_db():
     finally:
         db.close()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+# --- BAŞLANGIÇ İŞLEMLERİ ---
 
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+def create_initial_admin_user(db: Session):
+    admin_user = db.query(User).filter(User.email == "admin@trademirror.com").first()
+    
+    # Mevcut kullanıcı varsa, yeni bir tane oluşturmayı veya şifrelemeyi atla. (GÜVENLİ MANTIK)
+    if admin_user:
+        print("INFO: Yönetici kullanıcı ('admin@trademirror.com') zaten mevcut.")
+        return admin_user # 🚨 BU SATIR, ÜRETİM ORTAMINDA KODUN KALICI OLMASI GEREKEN HALİDİR.
+    
+    # Kullanıcı yoksa, varsayılan admini oluştur.
+    hashed_password = pwd_context.hash("admin123")
+    
+    new_user = User(
+        email="admin@trademirror.com",
+        hashed_password=hashed_password,
+        is_active=True,
+        setup_complete=False # Kurulumu tamamlamaya zorlamak için False
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    print("INFO: Başlangıç yönetici kullanıcısı ('admin@trademirror.com') oluşturuldu.")
+    return new_user
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+def init_db():
+    try:
+        Base.metadata.create_all(bind=engine)
+        db = SessionLocal()
+        create_initial_admin_user(db)
+        db.close()
+    except OperationalError as e:
+        print(f"KRİTİK HATA: Veritabanı bağlantı hatası! Hata: {e}")
+        print("Lütfen DATABASE_URL ortam değişkenini kontrol edin.")
 
-def get_user_by_email(db: Session, email: str):
+# --- FASTAPI UYGULAMASI ---
+
+app = FastAPI(
+    title="TradeMirror Global API",
+    description="Davranışsal Analiz Portalı Backend Hizmetleri",
+    version="1.0.0",
+    on_startup=[init_db] # Uygulama başlarken veritabanını oluştur
+)
+
+# CORS ayarları
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "http://localhost:8080",
+    "https://borsa-xeqq.onrender.com", # Buraya Render URL'nizi ekleyin
+    "https://*.ngrok-free.dev" # Ngrok test ortamı için
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Prodüksiyon ortamında bunu kısıtlamanız önerilir!
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Statik dosyaları (HTML, CSS, JS) sun
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --- KULLANICI ŞEMALARI (Pydantic) ---
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+class APISetup(BaseModel):
+    api_key: str
+    api_secret: str
+
+class TransactionCreate(BaseModel):
+    trade_id: str
+    is_winning: bool
+    duration_hours: float
+    pnl_pct: float
+    max_drawdown_pct: float
+    volatility_pct: float
+    exit_time: datetime
+
+# --- YARDIMCI GÜVENLİK FONKSİYONLARI ---
+
+def get_user(db: Session, email: str):
     return db.query(User).filter(User.email == email).first()
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def authenticate_user(db: Session, email: str, password: str):
+    user = get_user(db, email=email)
+    if not user:
+        return False
+    if not verify_password(password, user.hashed_password):
+        return False
+    return user
+
+def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Kimlik bilgileri doğrulanamadı",
@@ -168,224 +243,161 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-        token_data = TokenData(email=email)
+        token_data = email # Basitçe email'i kullan
     except JWTError:
         raise credentials_exception
         
-    user = get_user_by_email(db, email=token_data.email)
+    user = get_user(db, email=token_data)
     if user is None:
         raise credentials_exception
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)):
-    if current_user.is_active != 1:
+    if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Devre dışı bırakılmış kullanıcı")
     return current_user
 
-def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
-    """ Kullanıcıya e-posta ile rapor gönderir. SMTP ayarları doğru olmalıdır. """
+# --- YARDIMCI ANALİZ FONKSİYONLARI (Basit simülasyon) ---
+
+def calculate_dna_metrics(transactions: List[Transaction]) -> Dict[str, float]:
+    # Burası gerçek analitik motorunun yeridir. Basit ortalamalar döndürüldü.
+    if not transactions:
+        return {
+            "DS_Panic_Threshold": 0.0, "PS_Profit_Skewness": 0.0,
+            "HD_Patience_Duration_Hours": 0.0, "VT_Volatility_Tolerance": 0.0,
+            "FA_Overtrading_Score": 0.0,
+        }
     
-    # Güvenlik kontrolü
-    if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "YOUR_16_DIGIT_GMAIL_APP_PASSWORD_HERE":
-        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD kısmını güncelleyin.")
-
-    try:
-        msg = EmailMessage()
-        msg['Subject'] = 'TradeMirror Global: Haftalık Davranışsal Raporunuz'
-        msg['From'] = SMTP_USERNAME
-        msg['To'] = recipient_email
-        
-        content = f"""
-        Sayın {recipient_email},
-        
-        Haftalık Davranışsal Raporunuz hazırdır:
-
-        - Toplam İşlem Sayısı: {report_data.get('total_trades', 0)}
-        - Ortalama İşlem Süresi: {report_data.get('avg_duration_hours', 0.0)} saat
-        - Baskın Duygu: {report_data.get('dominant_emotion', 'N/A')}
-        - Risk Toleransı: {report_data.get('risk_tolerance', 'N/A')}
-        
-        Detaylı raporu platformunuzda bulabilirsiniz.
-
-        Saygılarımızla,
-        TradeMirror Global Ekibi
-        """
-        msg.set_content(content)
-        
-        context = ssl.create_default_context()
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls(context=context)
-            server.login(SMTP_USERNAME, SMTP_PASSWORD)
-            server.send_message(msg)
-            
-    except Exception as e:
-        print(f"E-posta gönderme hatası: {e}")
-        # Hata mesajını daha anlaşılır hale getirdik
-        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Sunucuya bağlanılamadı veya kimlik bilgileri yanlış. Detay: {e}")
-
-def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str, Any]:
-    # Analiz mantığı (Mock veriler kullanılarak)
+    # Basitçe, örnek metrikler hesaplayın
+    win_trades = [t for t in transactions if t.is_winning]
+    loss_trades = [t for t in transactions if not t.is_winning]
+    
     total_trades = len(transactions)
-    if total_trades == 0:
+    win_rate = len(win_trades) / total_trades if total_trades else 0
+    avg_pnl = sum(t.pnl_pct for t in transactions) / total_trades if total_trades else 0
+    avg_duration = sum(t.duration_hours for t in transactions) / total_trades if total_trades else 0
+    
+    # Bu metrikler için örnek formüller
+    panic_threshold = (1 - win_rate) * 100 * (1 + (abs(avg_pnl) * 0.5)) # Simülasyon
+    profit_skewness = len(win_trades) / (len(loss_trades) or 1) # Simülasyon
+    
+    return {
+        "DS_Panic_Threshold": min(panic_threshold, 100.0), # %0-100 arasında
+        "PS_Profit_Skewness": profit_skewness,
+        "HD_Patience_Duration_Hours": avg_duration,
+        "VT_Volatility_Tolerance": (1 - avg_duration / 10) * 100, # Basit sim.
+        "FA_Overtrading_Score": total_trades / 50, # Her 50 işlemde 1 puan
+    }
+
+def generate_weekly_report_summary(transactions: List[Transaction]):
+    # Son 7 günün işlemlerini filtrele
+    one_week_ago = datetime.utcnow() - timedelta(days=7)
+    recent_transactions = [t for t in transactions if t.exit_time > one_week_ago]
+    
+    if not recent_transactions:
         return {
             "total_trades": 0, "win_rate_pct": 0.0, "avg_pnl_pct": 0.0,
             "avg_duration_hours": 0.0, "avg_volatility_pct": 0.0,
-            "analysis_summary": "Henüz yeterli işlem verisi yok.",
-            "risk_tolerance": "ORTA",
-            "dominant_emotion": "Nötr"
+            "analysis_summary": "Bu hafta yeterli işlem yapılmadı. Daha fazla veri toplayın."
         }
         
-    winning_trades = [t for t in transactions if t.pnl_pct > 0]
-    total_pnl = sum(t.pnl_pct for t in transactions)
-    total_duration_minutes = sum(t.duration_minutes for t in transactions)
-    avg_volatility = random.uniform(0.5, 5.0)
-        
-    win_rate_pct = (len(winning_trades) / total_trades) * 100
-    avg_pnl_pct = total_pnl / total_trades
-    avg_duration_hours = total_duration_minutes / total_trades / 60
+    total_trades = len(recent_transactions)
+    win_trades = [t for t in recent_transactions if t.is_winning]
     
-    # Basit bir psiko-metrik analiz özeti
-    if win_rate_pct < 40 and avg_duration_hours < 0.5:
-        summary = "Hızlı Zarar Kesme eğilimi yüksek. Pozisyonlarda kalma sürenizi uzatın."
-    elif win_rate_pct > 60 and avg_duration_hours > 5.0:
-        summary = "Sabırlı bir profilsiniz. Risk/Ödül oranınızı optimize etmeyi düşünebilirsiniz."
-    else:
-        summary = "Dengeli bir profil. Kayıtlı verilerinize göre performansınız stabil."
-
+    win_rate_pct = (len(win_trades) / total_trades) * 100
+    avg_pnl_pct = sum(t.pnl_pct for t in recent_transactions) / total_trades
+    avg_duration_hours = sum(t.duration_hours for t in recent_transactions) / total_trades
+    avg_volatility_pct = sum(t.volatility_pct for t in recent_transactions) / total_trades
+    
+    summary = "İşlemleriniz ortalama üstü bir kâr oranı gösteriyor."
+    if win_rate_pct < 40:
+        summary = "Kazanma oranınız düşük. Daha seçici olmalısınız."
+    elif avg_pnl_pct < 0:
+        summary = "Haftayı zararla kapattınız. Zararı kesme stratejinizi gözden geçirin."
+        
     return {
         "total_trades": total_trades,
         "win_rate_pct": round(win_rate_pct, 2),
         "avg_pnl_pct": round(avg_pnl_pct, 2),
         "avg_duration_hours": round(avg_duration_hours, 2),
-        "avg_volatility_pct": round(avg_volatility, 2),
-        "analysis_summary": summary,
-        "risk_tolerance": "ORTA" if avg_volatility < 3 else "YÜKSEK",
-        "dominant_emotion": "Hırs" if avg_pnl_pct > 5 else "Nötr"
+        "avg_volatility_pct": round(avg_volatility_pct, 2),
+        "analysis_summary": summary
     }
 
-# YENİ KOD: İLK KULLANICIYI OLUŞTURMA FONKSİYONU
-def create_initial_admin_user():
-    """ Eğer veritabanında kullanıcı yoksa, varsayılan bir yönetici kullanıcı oluşturur. """
-    db = SessionLocal()
-    INITIAL_EMAIL = "admin@trademirror.com"
-    INITIAL_PASSWORD = "admin123" # KRİTİK: Kullanıcının istediği şifre
+# --- E-POSTA GÖNDERME FONKSİYONU ---
 
+def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
+    # Basit bir e-posta simülasyonu
+    
+    message = EmailMessage()
+    message["Subject"] = "TradeMirror Haftalık Psiko-Metrik Raporunuz"
+    message["From"] = EMAIL_SENDER
+    message["To"] = recipient_email
+    
+    body = f"""
+    Sayın Kullanıcı,
+    
+    Bu, haftalık Psiko-Metrik Raporunuzun özetidir:
+    
+    - Toplam İşlem: {report_data['total_trades']}
+    - Kazanma Oranı: {report_data['win_rate_pct']}%
+    - Ortalama Kâr/Zarar: {report_data['avg_pnl_pct']}%
+    - Analiz Özeti: {report_data['analysis_summary']}
+    
+    Lütfen daha fazla detay için uygulamaya giriş yapın.
+    """
+    message.set_content(body)
+    
+    context = ssl.create_default_context()
+    
     try:
-        user_exists = get_user_by_email(db, email=INITIAL_EMAIL)
-        
-        if not user_exists:
-            print(f"INFO: '{INITIAL_EMAIL}' kullanıcısı veritabanında bulunamadı. Yeni kullanıcı oluşturuluyor...")
-            
-            hashed_password = get_password_hash(INITIAL_PASSWORD)
-            db_user = User(email=INITIAL_EMAIL, hashed_password=hashed_password)
-            
-            db.add(db_user)
-            db.commit()
-            db.refresh(db_user)
-            
-            # Yeni kullanıcı için DNA profili oluştur
-            db_dna = DnaProfile(user_id=db_user.user_id)
-            db.add(db_dna)
-            db.commit()
-
-            print(f"BAŞARILI: Yönetici kullanıcı ('{INITIAL_EMAIL}') oluşturuldu. Şifre: '{INITIAL_PASSWORD}'")
-        else:
-             print(f"INFO: Yönetici kullanıcı ('{INITIAL_EMAIL}') zaten mevcut.")
+        # SMTP Bağlantısını kur
+        with smtplib.SMTP_SSL(EMAIL_SMTP_SERVER, 465, context=context) as server:
+            # server.ehlo() # Gerekirse
+            # server.starttls() # Gerekirse
+            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            server.sendmail(EMAIL_SENDER, recipient_email, message.as_string())
+        print(f"INFO: Rapor e-postası {recipient_email} adresine gönderildi.")
     except Exception as e:
-        print(f"HATA: Başlangıç kullanıcı oluşturulurken veya veritabanı sorgulanırken bir hata oluştu: {e}")
-    finally:
-        db.close()
+        print(f"UYARI: E-posta gönderimi başarısız oldu: {e}")
+        print("Lütfen e-posta ortam değişkenlerini kontrol edin (EMAIL_SENDER, EMAIL_PASSWORD vb.)")
 
 
-def generate_mock_dna_metrics(user_id: int) -> Dict[str, float]:
-    # Kullanıcı ID'sine göre rastgele ama kararlı (seeded) değerler üretilebilir
-    random.seed(user_id * 10)
-    
-    panic = random.uniform(3.0, 15.0)
-    skewness = random.uniform(0.5, 2.5)
-    patience = random.uniform(0.5, 24.0)
-    vol_tol = random.uniform(1.0, 8.0)
-    overtrading = random.uniform(1.0, 10.0)
+# --- ROUTE: ANA SAYFA YÖNLENDİRMESİ ---
 
-    return {
-        "DS_Panic_Threshold": round(panic, 2),
-        "PS_Profit_Skewness": round(skewness, 2),
-        "HD_Patience_Duration_Hours": round(patience, 1),
-        "VT_Volatility_Tolerance": round(vol_tol, 2),
-        "FA_Overtrading_Score": round(overtrading, 1),
-    }
-
-def update_dna_profile(user_id: int, db: Session):
-    transactions = db.query(Transaction).filter(Transaction.user_id == user_id).all()
-    
-    if not transactions:
-        return
-        
-    dna_profile = db.query(DnaProfile).filter(DnaProfile.user_id == user_id).first()
-    if not dna_profile:
-        dna_profile = DnaProfile(user_id=user_id)
-        db.add(dna_profile)
-        db.commit()
-        db.refresh(dna_profile)
-    
-    report_summary = generate_weekly_report_summary(transactions)
-    
-    dna_profile.risk_tolerance = report_summary.get("risk_tolerance")
-    dna_profile.dominant_emotion = report_summary.get("dominant_emotion")
-    
-    total_trades = len(transactions)
-    dna_profile.overtrading_tendency = min(90.0, 10.0 + total_trades * 2)
-    dna_profile.patience_score = max(20.0, 95.0 - total_trades)
-    dna_profile.consistency_score = random.uniform(30.0, 90.0)
-    dna_profile.last_updated = datetime.utcnow()
-    
-    db.commit()
-
-
-# --- İLK BAŞLANGIÇ GÖREVLERİ ---
-# Veritabanı bağlantısı başarılıysa, yönetici kullanıcıyı oluştur.
-try:
-    create_initial_admin_user()
-except Exception as e:
-    # Bu hata, veritabanı bağlantı dizesi tamamen yanlışsa veya servis kapalıysa yakalanır.
-    print(f"KRİTİK HATA: Veritabanı bağlantısı yapılamadı! Lütfen PostgreSQL sunucunuzu kontrol edin ve '{DATABASE_URL}' adresinin doğru olduğunu doğrulayın. Detay: {e}")
-
-
-# --- FASTAPI UYGULAMASI ---
-app = FastAPI(
-    title="TradeMirror Global API",
-    description="Davranışsal Analiz ve İşlem Kayıt Sistemi",
-    version="1.0.0",
-)
-
-# --- UZAKTAN ERİŞİM ÇÖZÜMÜ ---
-# Statik dosyaları /static öneki altına taşır.
-app.mount("/static", StaticFiles(directory="."), name="static")
-
-# Kök dizini login sayfasına yönlendirir.
-@app.get("/", include_in_schema=False)
-async def root():
+@app.get("/")
+def read_root():
     return RedirectResponse(url="/static/login.html")
 
-# --- CORS AYARLARI ---
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# --- ROUTE: KULLANICI İŞLEMLERİ (AUTH) ---
 
-
-# --- AUTH ROTALARI ---
+@app.post("/api/v1/users/register", response_model=Dict[str, str], tags=["Users"])
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = get_user(db, email=user.email)
+    if db_user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="E-posta adresi zaten kayıtlı.")
+        
+    hashed_password = get_password_hash(user.password)
+    
+    new_user = User(
+        email=user.email,
+        hashed_password=hashed_password,
+        is_active=True,
+        setup_complete=False # Yeni kullanıcılar kurulumu tamamlamaya zorlanır
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"message": "Kayıt başarılı"}
 
 @app.post("/api/v1/token", response_model=Token, tags=["Auth"])
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = get_user_by_email(db, email=form_data.username)
-    if not user or not verify_password(form_data.password, user.hashed_password):
+def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # form_data.username aslında email'dir.
+    user = authenticate_user(db, email=form_data.username, password=form_data.password)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Hatalı e-posta veya şifre",
+            detail="Hatalı kullanıcı adı veya şifre",
             headers={"WWW-Authenticate": "Bearer"},
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -394,148 +406,153 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     )
     return {"access_token": access_token, "token_type": "bearer"}
 
-@app.post("/api/v1/users/register", tags=["Auth"])
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = get_user_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
-        
-    hashed_password = get_password_hash(user.password)
-    db_user = User(email=user.email, hashed_password=hashed_password)
-    
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    # Yeni kullanıcı için DNA profili oluştur
-    db_dna = DnaProfile(user_id=db_user.user_id)
-    db.add(db_dna)
-    db.commit()
-    
-    return {"message": "Kayıt başarılı"}
-
-# --- KULLANICI / AYAR ROTALARI ---
-
-@app.get("/api/v1/users/me", response_model=UserBase, tags=["User"])
-def read_users_me(current_user: User = Depends(get_current_active_user)):
-    return current_user
-
-@app.post("/api/v1/setup/apikey", tags=["Setup"])
-def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    """ Kullanıcının borsa API anahtarlarını kaydeder ve Celery görevini başlatır. """
-    
-    current_user.api_key = setup_data.api_key
-    current_user.api_secret = setup_data.api_secret
-    current_user.exchange = setup_data.exchange
-    
-    db.commit()
-    
-    # Celery görevi sadece bileşenler yüklendiyse başlatılır.
-    if celery_app and synchronize_user_trades_task:
-        # delay() ile görevi arka plana atar
-        synchronize_user_trades_task.delay(current_user.user_id, setup_data.exchange, setup_data.api_key, setup_data.api_secret)
-        
-    return {"message": "API Anahtarları başarıyla kaydedildi ve senkronizasyon görevi başlatıldı."}
+# --- ROUTE: KURULUM İŞLEMLERİ ---
 
 @app.get("/api/v1/setup/status", tags=["Setup"])
-def check_setup_status(current_user: User = Depends(get_current_active_user)):
-    """ API key kurulum durumunu kontrol eder. """
-    is_setup = current_user.api_key is not None and current_user.api_secret is not None
-    return {"is_setup": is_setup, "exchange": current_user.exchange}
+def get_setup_status(current_user: User = Depends(get_current_active_user)):
+    """ API anahtarlarının kurulup kurulmadığını kontrol eder. """
+    return {"is_setup_complete": current_user.setup_complete}
 
-
-# --- İŞLEM ROTALARI ---
-
-class TransactionManualCreate(BaseModel):
-    trade_id: str
-    is_winning: bool
-    duration_hours: float
-    pnl_pct: float
-    max_drawdown_pct: float
-    volatility_pct: float
-
-@app.post("/api/v1/transactions/add", tags=["Transactions"])
-def add_transaction_manual(
-    transaction: TransactionManualCreate,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
+@app.post("/api/v1/setup/keys", tags=["Setup"])
+def save_api_keys(api_keys: APISetup, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """ Kullanıcının API anahtarlarını şifreleyerek kaydeder. """
     
-    exit_time = datetime.utcnow()
-    entry_time = exit_time - timedelta(hours=transaction.duration_hours)
+    # Gerçek uygulamada burada sağlam bir E2E şifreleme mekanizması kullanmalısınız
+    # Basitleştirilmiş örnek: Sadece Text olarak kaydet
     
-    pnl_val = transaction.pnl_pct
+    current_user.api_key_encrypted = api_keys.api_key # Şifreleme simülasyonu
+    current_user.api_secret_encrypted = api_keys.api_secret # Şifreleme simülasyonu
+    current_user.setup_complete = True
     
-    db_transaction = Transaction(
-        user_id=current_user.user_id,
-        symbol="MANUAL/USDT",
-        entry_price=100.0,
-        exit_price=100.0 * (1 + pnl_val / 100),
-        size=1.0,
-        entry_time=entry_time,
-        exit_time=exit_time,
-        pnl_pct=round(pnl_val, 2),
-        max_drawdown_pct=round(transaction.max_drawdown_pct, 2),
-        duration_minutes=round(transaction.duration_hours * 60, 2),
-        emotion_at_exit="Nötr"
-    )
-    
-    db.add(db_transaction)
     db.commit()
     
-    # DNA profilini güncelle
-    update_dna_profile(current_user.user_id, db)
+    # Celery kuruluysa, arka plan görevini başlat (API Key senkronizasyonu)
+    if synchronize_user_trades_task:
+        # Gerçek uygulamada burada API Keylerin çözülüp gönderilmesi gerekir
+        synchronize_user_trades_task.delay(current_user.user_id, api_keys.api_key, api_keys.api_secret)
+    else:
+        print("UYARI: Celery kurulu değil. İşlem senkronizasyon görevi başlatılamadı.")
+        
+    return {"message": "API anahtarları güvenli bir şekilde kaydedildi ve ilk senkronizasyon görevi başlatıldı."}
+
+# --- ROUTE: İŞLEM VE ANALİZ İŞLEMLERİ ---
+
+@app.post("/api/v1/transactions/add", tags=["Transactions"])
+def add_transaction(transaction: TransactionCreate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """ Manuel işlem kaydı ekler. """
     
-    return {"message": "İşlem başarıyla kaydedildi"}
-
-@app.get("/api/v1/transactions/history", tags=["Transactions"])
-def get_transaction_history(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    transactions = db.query(Transaction).filter(Transaction.user_id == current_user.user_id).order_by(Transaction.exit_time.desc()).all()
+    new_transaction = Transaction(
+        user_id=current_user.user_id,
+        trade_id=transaction.trade_id,
+        is_winning=transaction.is_winning,
+        pnl_pct=transaction.pnl_pct,
+        max_drawdown_pct=transaction.max_drawdown_pct,
+        duration_hours=transaction.duration_hours,
+        volatility_pct=transaction.volatility_pct,
+        exit_time=transaction.exit_time
+    )
     
-    history_list = []
-    for t in transactions:
-        is_winning = t.pnl_pct > 0
-        history_list.append({
-            'trade_id': t.trade_id,
-            'is_winning': is_winning,
-            'pnl_pct': round(t.pnl_pct, 2),
-            'max_drawdown_pct': round(t.max_drawdown_pct, 2),
-            'symbol': t.symbol,
-            'entry_time': t.entry_time.isoformat(),
-            'exit_time': t.exit_time.isoformat(),
-            'emotion_at_exit': t.emotion_at_exit,
-            'duration_hours': round(t.duration_minutes / 60, 2)
-        })
+    db.add(new_transaction)
+    db.commit()
+    db.refresh(new_transaction)
     
-    return history_list
-
-# --- DNA / RAPOR ROTALARI ---
-
-# ... (generate_mock_dna_metrics ve update_dna_profile fonksiyonları yukarı taşındı)
-
-@app.get("/api/v1/dna/profile", tags=["DNA"])
-def get_dna_profile(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    """ Davranışsal DNA profilini döndürür. """
-    dna_profile = db.query(DnaProfile).filter(DnaProfile.user_id == current_user.user_id).first()
+    # İşlem eklendikten sonra DNA profilini güncelle
+    # Bu, gerçek bir sistemde asenkron bir görev (Celery) olmalıdır.
+    
+    # Mevcut tüm işlemleri çek
+    all_transactions = db.query(Transaction).filter(Transaction.user_id == current_user.user_id).all()
+    
+    # Metrikleri hesapla
+    calculated_metrics = calculate_dna_metrics(all_transactions)
+    
+    # DNAProfile tablosunu güncelle/oluştur
+    dna_profile = db.query(DNAProfile).filter(DNAProfile.user_id == current_user.user_id).first()
     if not dna_profile:
-        dna_profile = DnaProfile(user_id=current_user.user_id)
+        dna_profile = DNAProfile(user_id=current_user.user_id)
         db.add(dna_profile)
-        db.commit()
-        db.refresh(dna_profile)
         
-    current_metrics = generate_mock_dna_metrics(current_user.user_id)
-    ideal_metrics = generate_mock_dna_metrics(1000)
+    # Basit bir güncelleme simülasyonu (risk toleransını, baskın duyguyu değiştirmez)
+    dna_profile.last_updated = datetime.utcnow()
     
-    history = []
-    for i in range(7):
-        date = datetime.now() - timedelta(days=i)
-        panic_threshold = current_metrics["DS_Panic_Threshold"] + random.uniform(-2, 2)
-        history.append({
-            "date": date.isoformat(),
-            "panic_threshold": round(max(0.1, panic_threshold), 2)
-        })
-    history.reverse()
+    # DNAMetric tablosunu güncelle/oluştur
+    for key, value in calculated_metrics.items():
+        metric = db.query(DNAMetric).filter(
+            DNAMetric.user_id == current_user.user_id,
+            DNAMetric.metric_name == key,
+            DNAMetric.is_ideal == False # Gerçek profil
+        ).first()
         
+        if metric:
+            metric.value = value
+            metric.last_updated = datetime.utcnow()
+        else:
+            new_metric = DNAMetric(
+                user_id=current_user.user_id,
+                metric_name=key,
+                value=value,
+                is_ideal=False
+            )
+            db.add(new_metric)
+            
+        # İdeal metrikler için basit bir varsayım (Gerçek sistemde kullanıcıdan alınır)
+        ideal_metric = db.query(DNAMetric).filter(
+            DNAMetric.user_id == current_user.user_id,
+            DNAMetric.metric_name == key,
+            DNAMetric.is_ideal == True # İdeal profil
+        ).first()
+        
+        if not ideal_metric:
+             ideal_value = value * 1.1 if "Threshold" not in key else value * 0.9 # İdeal metrik varsayımı
+             new_ideal_metric = DNAMetric(
+                user_id=current_user.user_id,
+                metric_name=key,
+                value=ideal_value,
+                is_ideal=True
+            )
+             db.add(new_ideal_metric)
+        
+    db.commit()
+    return {"message": "İşlem kaydedildi ve DNA profili güncellendi."}
+
+@app.get("/api/v1/transactions/history", response_model=List[TransactionCreate], tags=["Transactions"])
+def get_transaction_history(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """ Tüm işlem geçmişini döndürür. """
+    
+    transactions = db.query(Transaction).filter(Transaction.user_id == current_user.user_id).all()
+    return transactions
+
+@app.get("/api/v1/dna/profile", tags=["Analysis"])
+def get_dna_profile(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """ Kullanıcının Davranışsal DNA profilini döndürür. """
+    
+    dna_profile = db.query(DNAProfile).filter(DNAProfile.user_id == current_user.user_id).first()
+    
+    if not dna_profile:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DNA profili bulunamadı. Lütfen işlem kaydedin.")
+        
+    # Gerçek metrikleri al
+    current_metrics_list = db.query(DNAMetric).filter(
+        DNAMetric.user_id == current_user.user_id,
+        DNAMetric.is_ideal == False
+    ).all()
+    
+    # İdeal metrikleri al
+    ideal_metrics_list = db.query(DNAMetric).filter(
+        DNAMetric.user_id == current_user.user_id,
+        DNAMetric.is_ideal == True
+    ).all()
+    
+    # Sözlüğe dönüştür
+    current_metrics = {m.metric_name: m.value for m in current_metrics_list}
+    ideal_metrics = {m.metric_name: m.value for m in ideal_metrics_list}
+    
+    # Panik eşiği geçmişi için basit bir simülasyon
+    history = [
+        {"date": (datetime.utcnow() - timedelta(days=i)).isoformat(), "panic_threshold": random.uniform(50.0, 95.0)}
+        for i in range(30)
+    ]
+    history.reverse()
+
     return {
         "current_profile": current_metrics,
         "ideal_profile": ideal_metrics,
@@ -563,6 +580,6 @@ def send_report_email(current_user: User = Depends(get_current_active_user), db:
         # send_email_report fonksiyonu şimdi sizin e-posta adresinizi kullanacak
         send_email_report(current_user.email, report_data)
         return {"message": f"Rapor başarıyla {current_user.email} adresine gönderildi."}
-    except HTTPException as e:
-        # Hata mesajını API'dan döndürür
-        return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
+    except Exception as e:
+        print(f"E-posta gönderme hatası: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Rapor gönderilirken sunucu hatası oluştu.")
