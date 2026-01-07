@@ -335,20 +335,33 @@
 
     <script>
         // -----------------------------------------------------------------------------------------
-        // ÇÖZÜM: Dinamik BACKEND_URL Tanımı
+        // ÇÖZÜM: Dinamik BACKEND_URL Tanımı (KRİTİK DÜZELTME: IP Adresi Desteği Eklendi)
         // -----------------------------------------------------------------------------------------
 
         let BACKEND_URL = '';
-        
-        // Eğer sayfa ngrok adresi üzerinden yükleniyorsa VEYRA HTTPS kullanılıyorsa, ngrok adresini kullan.
-        if (window.location.hostname.includes('ngrok') || window.location.protocol === 'https:') {
-            // Ngrok'un size verdiği güncel HTTPS adresi
+        const hostname = window.location.hostname;
+        const protocol = window.location.protocol;
+        const defaultBackendPort = '8000';
+
+        // IP adresi regex kontrolü
+        const isIpAddress = hostname.match(/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/); 
+
+        // 1. Durum: Ngrok veya Güvenli (HTTPS) bağlantı
+        if (hostname.includes('ngrok') || protocol === 'https:') {
+            // Ngrok adresi değişirse bu kısmı güncellemelisiniz.
             BACKEND_URL = 'https://choripetalous-multiscreen-jami.ngrok-free.dev'; 
-            console.log('Backend URL (Ngrok):', BACKEND_URL);
-        } else {
-            // Aksi takdirde, yerel adresi kullan
-            BACKEND_URL = 'http://localhost:8000';
-            console.log('Backend URL (Local):', BACKEND_URL);
+            console.log('Backend URL (Ngrok/HTTPS):', BACKEND_URL);
+        } 
+        // 2. Durum: IP Adresi üzerinden erişim (KRİTİK DÜZELTME)
+        else if (isIpAddress) {
+            // Frontend'in çalıştığı IP adresini al ve Backend portunu kullan
+            BACKEND_URL = `${protocol}//${hostname}:${defaultBackendPort}`;
+            console.log('Backend URL (IP Address):', BACKEND_URL);
+        } 
+        // 3. Durum: Yerel Geliştirme (http://localhost)
+        else {
+            BACKEND_URL = `http://localhost:${defaultBackendPort}`;
+            console.log('Backend URL (Localhost):', BACKEND_URL);
         }
         
         // -----------------------------------------------------------------------------------------
@@ -759,7 +772,7 @@
         });
 
 
-        // --- SAYFA BAŞLANGICINDAKİ İLK YÜKLEME ---
+        // --- SAYFA BAŞLANGICINDAKİ İLK YÜKLEME ---\
         document.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('access_token');
             // KRİTİK DÜZELTME: Token yoksa login.html'e yönlendir
