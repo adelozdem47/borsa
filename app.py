@@ -1,4 +1,4 @@
-# app.py - TradeMirror Global Backend (Prodüksiyon Hazırı)
+# app.py - TradeMirror Global Backend (PostgreSQL ve Admin123 Varsayılanları ile)
 
 from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,30 +38,31 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 
 # --- ORTAM DEĞİŞKENLERİ VE SABİTLER (Prodüksiyon Ayarları) ---
-# KRİTİK GÜVENLİK NOTU: Prodüksiyonda bu değerler mutlaka bir .env dosyasından alınmalıdır!
 
-# Veritabanı URL'si
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./trademirror.db")
+# KRİTİK GÜNCELLEME: İstenen PostgreSQL bağlantı dizesi varsayılan olarak ayarlanmıştır.
+# Kullanıcı Adı: postgres (genellikle varsayılan), Şifre: admin123, DB Adı: borsa
+# Localhost ve 5432 portu varsayılmıştır.
+# NOT: Bu şifre koda gömüldüğü için güvenlik riski taşır.
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:admin123@localhost:5432/borsa")
 
-# JWT Gizli Anahtarı (Çok uzun ve karmaşık olmalıdır)
+# JWT Gizli Anahtarı
 SECRET_KEY = os.environ.get("SECRET_KEY", "GÜÇLÜ-UZUN-SECRET-KEY-BURAYA-KOYULMALI-PROD-ORTAMINDA")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-# SMTP (E-posta) Ayarları (KRİTİK GÜNCELLEME)
-# Kullanıcı isteği üzerine adelozdem6@gmail.com entegre edildi.
+# SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com") # <--- KULLANICI ADI ENTEGRE EDİLDİ
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "yjcu lcld eato zxek") # <--- LÜTFEN BURAYA UYGULAMA ŞİFRENİZİ GİRİN
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "yjcu lcld eato zxek")
 
-# --- GÜVENLİK ARAÇLARI (SON DÜZELTME) ---
-# bcrypt ile yaşanan uyumluluk sorununu (Mac/Miniforge) çözmek için sha256_crypt kullanılıyor.
+# --- GÜVENLİK ARAÇLARI ---
 pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 # --- VERİTABANI YAPILANDIRMASI ---
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# PostgreSQL için connect_args gerekmez, bu yüzden koşullu olarak kaldırıldı.
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -105,7 +106,8 @@ class Transaction(Base):
 try:
     Base.metadata.create_all(bind=engine)
 except OperationalError as e:
-    print(f"Veritabanı bağlantı hatası: {e}")
+    # Bu hata, veritabanı servisine bağlanılamadığında ortaya çıkar.
+    print(f"KRİTİK HATA: Veritabanı bağlantı hatası! Lütfen PostgreSQL sunucunuzun çalıştığından emin olun. Detay: {e}")
 
 
 # --- Pydantic Modelleri ---
@@ -260,6 +262,93 @@ def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str,
         "risk_tolerance": "ORTA" if avg_volatility < 3 else "YÜKSEK",
         "dominant_emotion": "Hırs" if avg_pnl_pct > 5 else "Nötr"
     }
+
+# YENİ KOD: İLK KULLANICIYI OLUŞTURMA FONKSİYONU
+def create_initial_admin_user():
+    """ Eğer veritabanında kullanıcı yoksa, varsayılan bir yönetici kullanıcı oluşturur. """
+    db = SessionLocal()
+    INITIAL_EMAIL = "admin@trademirror.com"
+    INITIAL_PASSWORD = "admin123" # KRİTİK: Kullanıcının istediği şifre
+
+    try:
+        user_exists = get_user_by_email(db, email=INITIAL_EMAIL)
+        
+        if not user_exists:
+            print(f"INFO: '{INITIAL_EMAIL}' kullanıcısı veritabanında bulunamadı. Yeni kullanıcı oluşturuluyor...")
+            
+            hashed_password = get_password_hash(INITIAL_PASSWORD)
+            db_user = User(email=INITIAL_EMAIL, hashed_password=hashed_password)
+            
+            db.add(db_user)
+            db.commit()
+            db.refresh(db_user)
+            
+            # Yeni kullanıcı için DNA profili oluştur
+            db_dna = DnaProfile(user_id=db_user.user_id)
+            db.add(db_dna)
+            db.commit()
+
+            print(f"BAŞARILI: Yönetici kullanıcı ('{INITIAL_EMAIL}') oluşturuldu. Şifre: '{INITIAL_PASSWORD}'")
+        else:
+             print(f"INFO: Yönetici kullanıcı ('{INITIAL_EMAIL}') zaten mevcut.")
+    except Exception as e:
+        print(f"HATA: Başlangıç kullanıcı oluşturulurken veya veritabanı sorgulanırken bir hata oluştu: {e}")
+    finally:
+        db.close()
+
+
+def generate_mock_dna_metrics(user_id: int) -> Dict[str, float]:
+    # Kullanıcı ID'sine göre rastgele ama kararlı (seeded) değerler üretilebilir
+    random.seed(user_id * 10)
+    
+    panic = random.uniform(3.0, 15.0)
+    skewness = random.uniform(0.5, 2.5)
+    patience = random.uniform(0.5, 24.0)
+    vol_tol = random.uniform(1.0, 8.0)
+    overtrading = random.uniform(1.0, 10.0)
+
+    return {
+        "DS_Panic_Threshold": round(panic, 2),
+        "PS_Profit_Skewness": round(skewness, 2),
+        "HD_Patience_Duration_Hours": round(patience, 1),
+        "VT_Volatility_Tolerance": round(vol_tol, 2),
+        "FA_Overtrading_Score": round(overtrading, 1),
+    }
+
+def update_dna_profile(user_id: int, db: Session):
+    transactions = db.query(Transaction).filter(Transaction.user_id == user_id).all()
+    
+    if not transactions:
+        return
+        
+    dna_profile = db.query(DnaProfile).filter(DnaProfile.user_id == user_id).first()
+    if not dna_profile:
+        dna_profile = DnaProfile(user_id=user_id)
+        db.add(dna_profile)
+        db.commit()
+        db.refresh(dna_profile)
+    
+    report_summary = generate_weekly_report_summary(transactions)
+    
+    dna_profile.risk_tolerance = report_summary.get("risk_tolerance")
+    dna_profile.dominant_emotion = report_summary.get("dominant_emotion")
+    
+    total_trades = len(transactions)
+    dna_profile.overtrading_tendency = min(90.0, 10.0 + total_trades * 2)
+    dna_profile.patience_score = max(20.0, 95.0 - total_trades)
+    dna_profile.consistency_score = random.uniform(30.0, 90.0)
+    dna_profile.last_updated = datetime.utcnow()
+    
+    db.commit()
+
+
+# --- İLK BAŞLANGIÇ GÖREVLERİ ---
+# Veritabanı bağlantısı başarılıysa, yönetici kullanıcıyı oluştur.
+try:
+    create_initial_admin_user()
+except Exception as e:
+    # Bu hata, veritabanı bağlantı dizesi tamamen yanlışsa veya servis kapalıysa yakalanır.
+    print(f"KRİTİK HATA: Veritabanı bağlantısı yapılamadı! Lütfen PostgreSQL sunucunuzu kontrol edin ve '{DATABASE_URL}' adresinin doğru olduğunu doğrulayın. Detay: {e}")
 
 
 # --- FASTAPI UYGULAMASI ---
@@ -422,49 +511,7 @@ def get_transaction_history(current_user: User = Depends(get_current_active_user
 
 # --- DNA / RAPOR ROTALARI ---
 
-def generate_mock_dna_metrics(user_id: int) -> Dict[str, float]:
-    # Kullanıcı ID'sine göre rastgele ama kararlı (seeded) değerler üretilebilir
-    random.seed(user_id * 10)
-    
-    panic = random.uniform(3.0, 15.0)
-    skewness = random.uniform(0.5, 2.5)
-    patience = random.uniform(0.5, 24.0)
-    vol_tol = random.uniform(1.0, 8.0)
-    overtrading = random.uniform(1.0, 10.0)
-
-    return {
-        "DS_Panic_Threshold": round(panic, 2),
-        "PS_Profit_Skewness": round(skewness, 2),
-        "HD_Patience_Duration_Hours": round(patience, 1),
-        "VT_Volatility_Tolerance": round(vol_tol, 2),
-        "FA_Overtrading_Score": round(overtrading, 1),
-    }
-
-def update_dna_profile(user_id: int, db: Session):
-    transactions = db.query(Transaction).filter(Transaction.user_id == user_id).all()
-    
-    if not transactions:
-        return
-        
-    dna_profile = db.query(DnaProfile).filter(DnaProfile.user_id == user_id).first()
-    if not dna_profile:
-        dna_profile = DnaProfile(user_id=user_id)
-        db.add(dna_profile)
-        db.commit()
-        db.refresh(dna_profile)
-    
-    report_summary = generate_weekly_report_summary(transactions)
-    
-    dna_profile.risk_tolerance = report_summary.get("risk_tolerance")
-    dna_profile.dominant_emotion = report_summary.get("dominant_emotion")
-    
-    total_trades = len(transactions)
-    dna_profile.overtrading_tendency = min(90.0, 10.0 + total_trades * 2)
-    dna_profile.patience_score = max(20.0, 95.0 - total_trades)
-    dna_profile.consistency_score = random.uniform(30.0, 90.0)
-    dna_profile.last_updated = datetime.utcnow()
-    
-    db.commit()
+# ... (generate_mock_dna_metrics ve update_dna_profile fonksiyonları yukarı taşındı)
 
 @app.get("/api/v1/dna/profile", tags=["DNA"])
 def get_dna_profile(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
