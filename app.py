@@ -49,8 +49,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-# KRİTİK DÜZELTME: Port 465 (SMTPS)
-SMTP_PORT = int(os.environ.get("SMTP_PORT", 465))
+# KRİTİK DÜZELTME: Port 465 (SMTPS) yerine Port 587 (STARTTLS) kullanıldı.
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
 # UYARI: Bu şifre varsayılandır. Kendi GMail Uygulama Şifrenizle DEĞİŞTİRİN.
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "yjcu lcld eato zxek")
@@ -110,7 +110,6 @@ class Transaction(Base):
     emotion_at_exit = Column(String)
 
 try:
-    # KRİTİK DÜZELTME: Bu satır kaldırıldı/yorum satırı yapıldı.
     # Bu, kullanıcıların verilerinin her dağıtımda SİLİNMESİNİ ÖNLEYEN DÜZELTMEDİR.
     # Base.metadata.drop_all(bind=engine)
     
@@ -191,11 +190,11 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Devre dışı bırakılmış kullanıcı")
     return current_user
 
+# KRİTİK GÜNCELLEME: Port 587 ve STARTTLS kullanımı
 def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
     """ Kullanıcıya e-posta ile rapor gönderir. SMTP ayarları doğru olmalıdır. """
     
     if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "yjcu lcld eato zxek":
-        # Render/Ağ sorunları için özel hata mesajı
         raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD'a GMail Uygulama Şifrenizi tanımlayın.")
 
     try:
@@ -223,8 +222,9 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
         
         context = ssl.create_default_context()
         
-        # Port 465 (SMTPS) ve SMTP_SSL kullanımı
-        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
+        # Port 587 için SMTP ve starttls() kullanımı
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls(context=context) # TLS şifrelemesini başlatır
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
             
