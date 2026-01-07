@@ -28,7 +28,7 @@ import ssl
 from email.message import EmailMessage
 
 # --- VERİTABANI İMPORTLARI ---
-# 🚨 KRİTİK DÜZELTME 1: Boolean tipi içeri aktarılıyor.
+# 🚨 DÜZELTME 1: Boolean tipi içeri aktarılıyor.
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, func, Boolean
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
@@ -41,9 +41,7 @@ from passlib.context import CryptContext
 # --- ORTAM DEĞİŞKENLERİ VE SABİTLER (Prodüksiyon Ayarları) ---
 
 # KRİTİK GÜNCELLEME: İstenen PostgreSQL bağlantı dizesi varsayılan olarak ayarlanmıştır.
-# Kullanıcı Adı: postgres (genellikle varsayılan), Şifre: admin123, DB Adı: borsa
-# Localhost ve 5432 portu varsayılmıştır.
-# NOT: Bu şifre koda gömüldüğü için güvenlik riski taşır.
+# LÜTFEN BU YEDEK DEĞERLERİ PRODÜKSİYON ORTAMINDA ASLA KULLANMAYIN.
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:admin123@localhost:5432/borsa")
 
 # JWT Gizli Anahtarı
@@ -62,8 +60,11 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 # --- VERİTABANI YAPILANDIRMASI ---
-# PostgreSQL için connect_args gerekmez, bu yüzden koşullu olarak kaldırıldı.
-engine = create_engine(DATABASE_URL)
+# KRİTİK DÜZELTME 4: 'SSL error: decryption failed or bad record mac' hatasını çözmek için 'sslmode=require' eklendi.
+engine = create_engine(
+    DATABASE_URL,
+    connect_args={"sslmode": "require"} # Bu, bağlantının SSL ile yapılmasını zorunlu kılar.
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -73,9 +74,9 @@ class User(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    # 🚨 KRİTİK DÜZELTME 2: Traceback'ten görülen setup_complete eklendi ve tipi düzeltildi.
+    # 🚨 DÜZELTME 2: setup_complete tipi düzeltildi.
     setup_complete = Column(Boolean, default=False)
-    # 🚨 KRİTİK DÜZELTME 3: is_active kolonu Integer veya Python 'bool' yerine 'Boolean' tipine ayarlandı.
+    # 🚨 DÜZELTME 3: is_active kolonu tipi düzeltildi.
     is_active = Column(Boolean, default=True)
     api_key = Column(Text, nullable=True)
     api_secret = Column(Text, nullable=True)
@@ -192,7 +193,11 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
     
     # Güvenlik kontrolü
     if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "YOUR_16_DIGIT_GMAIL_APP_PASSWORD_HERE":
-        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD kısmını güncelleyin.")
+        # Hardcoded şifre kontrolü ile daha anlaşılır hata mesajı.
+        if SMTP_PASSWORD == "yjcu lcld eato zxek":
+             raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD ve SMTP_USERNAME ortam değişkenlerini GMail Uygulama Şifreniz ile güncelleyin.")
+        else:
+             raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP ayarlarını güncelleyin.")
 
     try:
         msg = EmailMessage()
