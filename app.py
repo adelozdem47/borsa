@@ -1,4 +1,4 @@
-# app.py - TradeMirror Global Backend (POST-PRODUCTION GÜNCELLEMESİ)
+# app.py - TradeMirror Global Backend (CELERY'SİZ ASYNC ÇÖZÜMÜ)
 
 from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,14 +12,14 @@ import json
 import random
 import os
 
-# --- GEREKLİ CELERY IMPORTLARI (Arka Plan Görevleri İçin) ---
+# --- GEREKLİ ASYNC IMPORTLARI (Celery Kaldırıldı) ---
+import asyncio
+# ccxt kütüphanesinin eşzamansız (async) desteği kullanılır.
 try:
-    # Bu importlar, Celery ve CCXT kütüphanelerinin kurulu olmasını gerektirir.
-    from celery_worker import synchronize_user_trades_task, celery_app
+    import ccxt.async_support as ccxt_async
 except ImportError:
-    synchronize_user_trades_task = None
-    celery_app = None
-    print("UYARI: Celery bileşenleri içeri aktarılamadı. Arka plan görevleri çalışmayacaktır.")
+    ccxt_async = None
+    print("UYARI: ccxt.async_support içeri aktarılamadı. Lütfen 'ccxt' kütüphanesini kurun.")
 
 
 # --- E-POSTA İMPORTLARI ---
@@ -49,7 +49,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-# KRİTİK DÜZELTME 1: Render'da çalışması daha olası olan SMTPS (465) portuna geçildi.
+# KRİTİK DÜZELTME: Port 465 (SMTPS)
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 465))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
 # UYARI: Bu şifre varsayılandır. Kendi GMail Uygulama Şifrenizle DEĞİŞTİRİN.
@@ -65,7 +65,7 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"sslmode": "require"},
     pool_pre_ping=True,
-    # KRİTİK DÜZELTME 2: Bağlantı kesintilerini önlemek için 60 saniye havuz geri dönüşümü.
+    # Bağlantı kesintilerini önlemek için geri dönüşüm süresi.
     pool_recycle=60
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -110,7 +110,8 @@ class Transaction(Base):
     emotion_at_exit = Column(String)
 
 try:
-    # KRİTİK DÜZELTME 3: Veri kalıcılığını sağlamak için tüm tabloları silen drop_all KALDIRILDI.
+    # KRİTİK DÜZELTME: Bu satır kaldırıldı/yorum satırı yapıldı.
+    # Bu, kullanıcıların verilerinin her dağıtımda SİLİNMESİNİ ÖNLEYEN DÜZELTMEDİR.
     # Base.metadata.drop_all(bind=engine)
     
     Base.metadata.create_all(bind=engine)
@@ -193,10 +194,9 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
 def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
     """ Kullanıcıya e-posta ile rapor gönderir. SMTP ayarları doğru olmalıdır. """
     
-    # Varsayılan şifre kontrolü
     if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "yjcu lcld eato zxek":
-        # Hata mesajı artık hem Uygulama Şifresini hem de Render'daki olası ağ kısıtlamasını içerir.
-        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD'a GMail Uygulama Şifrenizi tanımlayın. Hata devam ederse, Render'ın dış ağ bağlantılarını (Port 465) kontrol edin.")
+        # Render/Ağ sorunları için özel hata mesajı
+        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD'a GMail Uygulama Şifrenizi tanımlayın.")
 
     try:
         msg = EmailMessage()
@@ -223,15 +223,15 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
         
         context = ssl.create_default_context()
         
-        # Port 465 (SMTPS) ve SMTP_SSL kullanımı (Render'da en iyi ihtimal)
+        # Port 465 (SMTPS) ve SMTP_SSL kullanımı
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
             
     except Exception as e:
         print(f"E-posta gönderme hatası: {e}")
-        # Detaylı hata mesajı loglara yazılır ve kullanıcıya iletilir.
-        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Sunucu/Ağ hatası veya GMail kimlik doğrulama başarısız. Detay: {e}")
+        # Kullanıcıya ağ veya kimlik doğrulama hatasını bildirir.
+        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Ağ/Kimlik doğrulama başarısız (Hata kodu: 500). Detay: {e}")
 
 def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str, Any]:
     # Analiz mantığı (Mock veriler kullanılarak)
@@ -356,6 +356,74 @@ def update_dna_profile(user_id: int, db: Session):
     
     db.commit()
 
+# --- YENİ EŞZAMANSIZ VERİ ÇEKME FONKSİYONU (Celery Yerine) ---
+
+async def async_synchronize_user_trades(user_id: int, exchange_name: str, api_key: str, api_secret: str):
+    """ CCXT'nin eşzamansız sürümünü kullanarak tek sunucu içinde veri çeker. """
+    
+    db = SessionLocal()
+    
+    if not ccxt_async:
+        print("ASYNC HATA: ccxt.async_support kurulu değil. Veri çekilemedi.")
+        db.close()
+        return
+
+    try:
+        # ccxt.async_support kullanarak eşzamansız bağlantı kurma
+        exchange_class = getattr(ccxt_async, exchange_name.lower())
+        exchange = exchange_class({
+            'apiKey': api_key,
+            'secret': api_secret,
+            'enableRateLimit': True,
+        })
+        
+        # Basitlik için son 7 günün işlemlerini çekiyoruz.
+        since = exchange.parse8601((datetime.utcnow() - timedelta(days=7)).isoformat() + 'Z')
+        
+        # await kullanılarak eşzamansız çağrı yapılır
+        trades = await exchange.fetch_my_trades(symbol=None, since=since, limit=100)
+        
+        new_trades_count = 0
+        
+        for trade in trades:
+            # Mock PNL ve Analiz verileri üretilir
+            pnl_pct_mock = (float(trade['price']) * 0.01) * random.uniform(-1, 1)
+            max_drawdown_mock = abs(pnl_pct_mock) * random.uniform(0.5, 1.5)
+            duration_minutes_mock = random.uniform(10, 300)
+
+            # Veritabanı modeli oluşturulur ve kaydedilir
+            db_transaction = Transaction(
+                user_id=user_id,
+                symbol=trade['symbol'],
+                entry_price=trade['price'],
+                exit_price=trade['price'], # Basitlik için aynı kullanıldı
+                size=trade['amount'],
+                entry_time=datetime.fromtimestamp(trade['timestamp'] / 1000),
+                exit_time=datetime.fromtimestamp(trade['timestamp'] / 1000) + timedelta(minutes=duration_minutes_mock),
+                pnl_pct=round(pnl_pct_mock, 2),
+                max_drawdown_pct=round(max_drawdown_mock, 2),
+                duration_minutes=round(duration_minutes_mock, 2),
+                emotion_at_exit="Otomatik"
+            )
+            
+            db.add(db_transaction)
+            new_trades_count += 1
+            
+        db.commit()
+        # DNA profilini güncelle
+        update_dna_profile(user_id, db)
+        
+        print(f"ASYNC: Kullanıcı {user_id} için {exchange_name} borsasından {new_trades_count} yeni işlem senkronize edildi.")
+        
+        await exchange.close()
+        
+    except Exception as e:
+        db.rollback()
+        print(f"ASYNC HATA: Kullanıcı {user_id} için veri çekme başarısız: {e}")
+        
+    finally:
+        db.close()
+
 
 # --- İLK BAŞLANGIÇ GÖREVLERİ ---
 try:
@@ -432,8 +500,8 @@ def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
 
 @app.post("/api/v1/setup/apikey", tags=["Setup"])
-def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    """ Kullanıcının borsa API anahtarlarını kaydeder ve Celery görevini başlatır. """
+async def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """ Kullanıcının borsa API anahtarlarını kaydeder ve arka plan senkronizasyonunu başlatır. """
     
     current_user.api_key = setup_data.api_key
     current_user.api_secret = setup_data.api_secret
@@ -442,12 +510,21 @@ def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_curr
     
     db.commit()
     
-    # Celery görevi sadece bileşenler yüklendiyse başlatılır.
-    if celery_app and synchronize_user_trades_task:
-        # delay() ile görevi arka plana atar
-        synchronize_user_trades_task.delay(current_user.user_id, setup_data.exchange, setup_data.api_key, setup_data.api_secret)
+    # KRİTİK DEĞİŞİKLİK: asyncio kullanarak arka plan görevi başlatma (Celery yerine)
+    if ccxt_async:
+        asyncio.create_task(
+            async_synchronize_user_trades(
+                current_user.user_id,
+                setup_data.exchange,
+                setup_data.api_key,
+                setup_data.api_secret
+            )
+        )
+    else:
+        # Eğer ccxt kurulu değilse veya import edilemediyse uyarı verilir
+        print("UYARI: ccxt kütüphanesi kurulu olmadığı için otomatik senkronizasyon başlatılamadı.")
         
-    return {"message": "API Anahtarları başarıyla kaydedildi ve senkronizasyon görevi başlatıldı."}
+    return {"message": "API Anahtarları başarıyla kaydedildi. Arka plan senkronizasyonu başladı."}
 
 @app.get("/api/v1/setup/status", tags=["Setup"])
 def check_setup_status(current_user: User = Depends(get_current_active_user)):
@@ -570,9 +647,7 @@ def send_report_email(current_user: User = Depends(get_current_active_user), db:
     report_data = generate_weekly_report_summary(transactions)
     
     try:
-        # Herkesin e-posta adresi (current_user.email) kullanılarak rapor gönderilir.
         send_email_report(current_user.email, report_data)
         return {"message": f"Rapor başarıyla {current_user.email} adresine gönderildi."}
     except HTTPException as e:
-        # Eğer bir HTTPException oluşursa (örn. SMTP ayarı hatası), detayını döndürür.
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
