@@ -1,4 +1,4 @@
-# app.py - TradeMirror Global Backend (PostgreSQL ve Admin123 Varsayılanları ile)
+# app.py - TradeMirror Global Backend (POST-PRODUCTION GÜNCELLEMESİ)
 
 from fastapi import FastAPI, HTTPException, Depends, status, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,9 +49,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-# KRİTİK DÜZELTME: Render'da çalışması daha olası olan SMTPS (465) portuna geçildi.
+# KRİTİK DÜZELTME 1: Render'da çalışması daha olası olan SMTPS (465) portuna geçildi.
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 465))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
+# UYARI: Bu şifre varsayılandır. Kendi GMail Uygulama Şifrenizle DEĞİŞTİRİN.
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "yjcu lcld eato zxek")
 
 # --- GÜVENLİK ARAÇLARI ---
@@ -64,7 +65,8 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"sslmode": "require"},
     pool_pre_ping=True,
-    pool_recycle=60                     # <<<< BURADA 60 OLARAK DEĞİŞTİRİLDİ >>>>
+    # KRİTİK DÜZELTME 2: Bağlantı kesintilerini önlemek için 60 saniye havuz geri dönüşümü.
+    pool_recycle=60
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -108,8 +110,8 @@ class Transaction(Base):
     emotion_at_exit = Column(String)
 
 try:
-    # KRİTİK DÜZELTME: SCHEMA UYUŞMAZLIĞINI gidermek için tablo silme/yeniden oluşturma.
-    Base.metadata.drop_all(bind=engine)
+    # KRİTİK DÜZELTME 3: Veri kalıcılığını sağlamak için tüm tabloları silen drop_all KALDIRILDI.
+    # Base.metadata.drop_all(bind=engine)
     
     Base.metadata.create_all(bind=engine)
 except OperationalError as e:
@@ -191,8 +193,10 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
 def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
     """ Kullanıcıya e-posta ile rapor gönderir. SMTP ayarları doğru olmalıdır. """
     
+    # Varsayılan şifre kontrolü
     if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "yjcu lcld eato zxek":
-        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD ve SMTP_USERNAME ortam değişkenlerini GMail Uygulama Şifreniz ile güncelleyin.")
+        # Hata mesajı artık hem Uygulama Şifresini hem de Render'daki olası ağ kısıtlamasını içerir.
+        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD'a GMail Uygulama Şifrenizi tanımlayın. Hata devam ederse, Render'ın dış ağ bağlantılarını (Port 465) kontrol edin.")
 
     try:
         msg = EmailMessage()
@@ -219,15 +223,15 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
         
         context = ssl.create_default_context()
         
-        # Port 465 (SMTPS) ve SMTP_SSL kullanımı
+        # Port 465 (SMTPS) ve SMTP_SSL kullanımı (Render'da en iyi ihtimal)
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
             server.login(SMTP_USERNAME, SMTP_PASSWORD)
             server.send_message(msg)
             
     except Exception as e:
         print(f"E-posta gönderme hatası: {e}")
-        # Hata mesajı, kullanıcıya e-posta sunucusunda bir sorun olduğunu bildirir.
-        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Ağ veya sunucu ayarları yanlış. Detay: {e}")
+        # Detaylı hata mesajı loglara yazılır ve kullanıcıya iletilir.
+        raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Sunucu/Ağ hatası veya GMail kimlik doğrulama başarısız. Detay: {e}")
 
 def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str, Any]:
     # Analiz mantığı (Mock veriler kullanılarak)
@@ -566,7 +570,9 @@ def send_report_email(current_user: User = Depends(get_current_active_user), db:
     report_data = generate_weekly_report_summary(transactions)
     
     try:
+        # Herkesin e-posta adresi (current_user.email) kullanılarak rapor gönderilir.
         send_email_report(current_user.email, report_data)
         return {"message": f"Rapor başarıyla {current_user.email} adresine gönderildi."}
     except HTTPException as e:
+        # Eğer bir HTTPException oluşursa (örn. SMTP ayarı hatası), detayını döndürür.
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
