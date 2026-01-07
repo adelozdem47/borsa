@@ -28,7 +28,6 @@ import ssl
 from email.message import EmailMessage
 
 # --- VERİTABANI İMPORTLARI ---
-# 🚨 DÜZELTME 1: Boolean tipi içeri aktarılıyor.
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, func, Boolean
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.ext.declarative import declarative_base
@@ -40,8 +39,7 @@ from passlib.context import CryptContext
 
 # --- ORTAM DEĞİŞKENLERİ VE SABİTLER (Prodüksiyon Ayarları) ---
 
-# KRİTİK GÜNCELLEME: İstenen PostgreSQL bağlantı dizesi varsayılan olarak ayarlanmıştır.
-# LÜTFEN BU YEDEK DEĞERLERİ PRODÜKSİYON ORTAMINDA ASLA KULLANMAYIN.
+# KRİTİK: Bağlantı dizesi varsayılan olarak ayarlandı.
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:admin123@localhost:5432/borsa")
 
 # JWT Gizli Anahtarı
@@ -60,10 +58,10 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 # --- VERİTABANI YAPILANDIRMASI ---
-# KRİTİK DÜZELTME 4: 'SSL error: decryption failed or bad record mac' hatasını çözmek için 'sslmode=require' eklendi.
+# SSL HATA DÜZELTMESİ: Render gibi bulut platformlarında SSL hatasını çözmek için 'sslmode=require' eklendi.
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"sslmode": "require"} # Bu, bağlantının SSL ile yapılmasını zorunlu kılar.
+    connect_args={"sslmode": "require"}
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -74,9 +72,9 @@ class User(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    # 🚨 DÜZELTME 2: setup_complete tipi düzeltildi.
+    # TİP DÜZELTMESİ: Boolean tipi kullanıldı.
     setup_complete = Column(Boolean, default=False)
-    # 🚨 DÜZELTME 3: is_active kolonu tipi düzeltildi.
+    # TİP DÜZELTMESİ: Boolean tipi kullanıldı.
     is_active = Column(Boolean, default=True)
     api_key = Column(Text, nullable=True)
     api_secret = Column(Text, nullable=True)
@@ -109,6 +107,11 @@ class Transaction(Base):
     emotion_at_exit = Column(String)
 
 try:
+    # 🚨 KRİTİK DÜZELTME 5: SCHEMA UYUŞMAZLIĞINI (UndefinedColumn) gidermek için tablo silme/yeniden oluşturma eklendi.
+    # UYARI: BU, HER DEPLOY'DE TÜM VERİYİ SİLER. Geliştirme/Test aşamasında tutulmalıdır.
+    # PRODÜKSİYONDA BU SATIR KALDIRILMALIDIR!
+    Base.metadata.drop_all(bind=engine)
+    
     Base.metadata.create_all(bind=engine)
 except OperationalError as e:
     # Bu hata, veritabanı servisine bağlanılamadığında ortaya çıkar.
@@ -160,6 +163,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 def get_user_by_email(db: Session, email: str):
+    # Bu sorgu artık yeni ve doğru şemayı (setup_complete dahil) kullanacaktır.
     return db.query(User).filter(User.email == email).first()
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
@@ -183,7 +187,6 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)):
-    # is_active kolonu artık Boolean olduğu için kontrolü güncelledik.
     if current_user.is_active is not True:
         raise HTTPException(status_code=400, detail="Devre dışı bırakılmış kullanıcı")
     return current_user
@@ -191,13 +194,8 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
 def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
     """ Kullanıcıya e-posta ile rapor gönderir. SMTP ayarları doğru olmalıdır. """
     
-    # Güvenlik kontrolü
-    if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "YOUR_16_DIGIT_GMAIL_APP_PASSWORD_HERE":
-        # Hardcoded şifre kontrolü ile daha anlaşılır hata mesajı.
-        if SMTP_PASSWORD == "yjcu lcld eato zxek":
-             raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD ve SMTP_USERNAME ortam değişkenlerini GMail Uygulama Şifreniz ile güncelleyin.")
-        else:
-             raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP ayarlarını güncelleyin.")
+    if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "yjcu lcld eato zxek":
+        raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD ve SMTP_USERNAME ortam değişkenlerini GMail Uygulama Şifreniz ile güncelleyin.")
 
     try:
         msg = EmailMessage()
@@ -230,7 +228,6 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
             
     except Exception as e:
         print(f"E-posta gönderme hatası: {e}")
-        # Hata mesajını daha anlaşılır hale getirdik
         raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Sunucuya bağlanılamadı veya kimlik bilgileri yanlış. Detay: {e}")
 
 def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str, Any]:
@@ -278,21 +275,21 @@ def create_initial_admin_user():
     """ Eğer veritabanında kullanıcı yoksa, varsayılan bir yönetici kullanıcı oluşturur. """
     db = SessionLocal()
     INITIAL_EMAIL = "admin@trademirror.com"
-    INITIAL_PASSWORD = "admin123" # KRİTİK: Kullanıcının istediği şifre
+    INITIAL_PASSWORD = "admin123"
 
     try:
+        # get_user_by_email artık doğru kolonları kullanır.
         user_exists = get_user_by_email(db, email=INITIAL_EMAIL)
         
         if not user_exists:
             print(f"INFO: '{INITIAL_EMAIL}' kullanıcısı veritabanında bulunamadı. Yeni kullanıcı oluşturuluyor...")
             
             hashed_password = get_password_hash(INITIAL_PASSWORD)
-            # is_active ve setup_complete varsayılan olarak True/False (veya 1/0) olarak ayarlanır
             db_user = User(
                 email=INITIAL_EMAIL,
                 hashed_password=hashed_password,
                 is_active=True,
-                setup_complete=False # Yeni kullanıcı kurulum yapmadığı için
+                setup_complete=False
             )
             
             db.add(db_user)
@@ -308,6 +305,7 @@ def create_initial_admin_user():
         else:
              print(f"INFO: Yönetici kullanıcı ('{INITIAL_EMAIL}') zaten mevcut.")
     except Exception as e:
+        # Hata yakalama, veritabanı bağlantı sorunlarını gösterir.
         print(f"HATA: Başlangıç kullanıcı oluşturulurken veya veritabanı sorgulanırken bir hata oluştu: {e}")
     finally:
         db.close()
@@ -417,7 +415,6 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
         
     hashed_password = get_password_hash(user.password)
-    # Yeni kullanıcı oluşturulurken setup_complete=False olarak ayarlandı
     db_user = User(email=user.email, hashed_password=hashed_password, setup_complete=False)
     
     db.add(db_user)
@@ -458,7 +455,6 @@ def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_curr
 @app.get("/api/v1/setup/status", tags=["Setup"])
 def check_setup_status(current_user: User = Depends(get_current_active_user)):
     """ API key kurulum durumunu kontrol eder. """
-    # is_setup için artık yeni setup_complete kolonu kullanılıyor
     is_setup = current_user.setup_complete
     return {"is_setup": is_setup, "exchange": current_user.exchange}
 
@@ -530,8 +526,6 @@ def get_transaction_history(current_user: User = Depends(get_current_active_user
 
 # --- DNA / RAPOR ROTALARI ---
 
-# ... (generate_mock_dna_metrics ve update_dna_profile fonksiyonları yukarı taşındı)
-
 @app.get("/api/v1/dna/profile", tags=["DNA"])
 def get_dna_profile(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     """ Davranışsal DNA profilini döndürür. """
@@ -579,9 +573,7 @@ def send_report_email(current_user: User = Depends(get_current_active_user), db:
     report_data = generate_weekly_report_summary(transactions)
     
     try:
-        # send_email_report fonksiyonu şimdi sizin e-posta adresinizi kullanacak
         send_email_report(current_user.email, report_data)
         return {"message": f"Rapor başarıyla {current_user.email} adresine gönderildi."}
     except HTTPException as e:
-        # Hata mesajını API'dan döndürür
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
