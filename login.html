@@ -24,16 +24,15 @@
 
         /* Genel Stil */
         body {
-            font-family: 'Roboto', sans-serif;
             background-color: var(--bg-dark);
             color: var(--color-text);
-            margin: 0;
-            padding: 0;
+            font-family: 'Roboto', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            overflow-y: auto;
+            margin: 0;
+            padding: 20px;
         }
 
         .auth-container {
@@ -46,37 +45,11 @@
             text-align: center;
         }
 
-        .logo {
+        h2 {
             font-family: 'Orbitron', sans-serif;
-            font-size: 2.2rem;
             color: var(--color-primary);
             margin-bottom: 25px;
-            letter-spacing: 1px;
-        }
-
-        .logo span {
-            color: var(--color-secondary);
-        }
-
-        .form-switch {
-            display: flex;
-            justify-content: center;
-            margin-bottom: 25px;
-        }
-
-        .switch-btn {
-            background: none;
-            border: none;
-            color: var(--color-text);
-            padding: 10px 20px;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: color 0.3s, border-bottom 0.3s;
-        }
-
-        .switch-btn.active {
-            color: var(--color-primary);
-            border-bottom: 3px solid var(--color-primary);
+            font-weight: 700;
         }
 
         .form-group {
@@ -84,209 +57,214 @@
             text-align: left;
         }
 
-        .form-group label {
+        label {
             display: block;
             margin-bottom: 8px;
-            font-weight: 300;
+            color: var(--color-secondary);
+            font-weight: 400;
+            font-size: 0.9em;
         }
 
-        .form-group input {
+        input[type="email"],
+        input[type="password"] {
             width: 100%;
-            padding: 12px;
+            padding: 12px 15px;
+            border: 1px solid #333;
+            border-radius: var(--border-radius);
             background-color: var(--input-bg);
-            border: 1px solid #333355;
-            border-radius: 8px;
             color: var(--color-text);
-            font-size: 1rem;
             box-sizing: border-box;
             transition: border-color 0.3s;
         }
 
-        .form-group input:focus {
+        input[type="email"]:focus,
+        input[type="password"]:focus {
             border-color: var(--color-primary);
             outline: none;
         }
 
-        .auth-btn {
+        .btn-primary, .btn-secondary {
             width: 100%;
-            padding: 15px;
-            background-color: var(--color-primary);
-            color: var(--bg-dark);
+            padding: 12px;
             border: none;
-            border-radius: 8px;
-            font-size: 1.1rem;
+            border-radius: var(--border-radius);
             font-weight: 700;
             cursor: pointer;
-            transition: background-color 0.3s, transform 0.1s;
+            transition: background-color 0.3s;
+            margin-top: 10px;
+        }
+        
+        .btn-primary {
+            background-color: var(--color-primary);
+            color: var(--bg-card);
         }
 
-        .auth-btn:hover {
-            background-color: #0099ad;
+        .btn-primary:hover {
+            background-color: #008c9e;
         }
 
-        .auth-btn:active {
-            transform: scale(0.99);
+        .btn-secondary {
+            background-color: var(--color-secondary);
+            color: var(--bg-card);
         }
 
-        /* Mesaj Alanı */
-        #message {
-            margin-top: 20px;
+        .btn-secondary:hover {
+            background-color: #6a6aed;
+        }
+
+        .message {
             padding: 15px;
-            border-radius: 8px;
-            text-align: center;
+            border-radius: var(--border-radius);
+            margin-top: 20px;
             font-weight: 700;
-            display: none; /* Başlangıçta gizli */
         }
 
-        .message-success {
-            background-color: rgba(56, 193, 114, 0.15);
-            color: var(--color-success);
+        .message.success {
+            background-color: var(--color-success);
+            color: var(--bg-card);
         }
 
-        .message-error {
-            background-color: rgba(255, 107, 107, 0.15);
-            color: var(--color-danger);
+        .message.error {
+            background-color: var(--color-danger);
+            color: var(--bg-card);
         }
 
-        /* Sosyal Giriş */
-        .social-login {
-            margin-top: 30px;
-            border-top: 1px solid #222244;
-            padding-top: 20px;
+        .link-toggle {
+            color: var(--color-secondary);
+            cursor: pointer;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .link-toggle:hover {
+            color: var(--color-primary);
+        }
+        
+        .social-login-group {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 20px;
         }
 
         .social-btn {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 15px;
+            flex-grow: 1;
+            padding: 10px;
             border: none;
-            border-radius: 8px;
-            font-size: 1rem;
+            border-radius: var(--border-radius);
+            font-size: 1.1em;
             cursor: pointer;
             transition: opacity 0.3s;
-        }
-
-        .google-btn {
-            background-color: #4285F4;
             color: white;
         }
-        
-        /* Form Geçişleri */
-        .form-content {
-            display: none;
-            animation: fadeIn 0.5s;
+
+        .social-btn:hover {
+            opacity: 0.8;
         }
 
-        .form-content.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
+        .google { background-color: #db4437; }
+        .twitter { background-color: #1da1f2; }
     </style>
 </head>
 <body>
     <div class="auth-container">
-        <div class="logo">TradeMirror<span>Global</span></div>
         
-        <div id="message" style="display: none;"></div>
-
-        <div class="form-switch">
-            <button id="login-switch" class="switch-btn active" onclick="toggleForm('login')">Giriş Yap</button>
-            <button id="register-switch" class="switch-btn" onclick="toggleForm('register')">Kayıt Ol</button>
-        </div>
-
-        <div id="login-form-content" class="form-content active">
+        <div id="login-form-container">
+            <h2><i class="fas fa-lock"></i> TradeMirror Giriş</h2>
             <form id="login-form">
                 <div class="form-group">
-                    <label for="login-email"><i class="fas fa-envelope"></i> E-posta</label>
-                    <input type="email" id="login-email" required>
+                    <label for="login-username">E-posta</label>
+                    <input type="email" id="login-username" required>
                 </div>
                 <div class="form-group">
-                    <label for="login-password"><i class="fas fa-lock"></i> Şifre</label>
+                    <label for="login-password">Şifre</label>
                     <input type="password" id="login-password" required>
                 </div>
-                <button type="submit" class="auth-btn">Giriş Yap</button>
+                <button type="submit" class="btn-primary">Giriş Yap</button>
             </form>
+            <div id="login-message" class="message" style="display: none;"></div>
+            
+            <p class="mt-4">
+                Hesabınız yok mu? <span class="link-toggle" id="show-register">Kayıt Olun</span>
+            </p>
         </div>
 
-        <div id="register-form-content" class="form-content">
+        <div id="register-form-container" style="display: none;">
+            <h2><i class="fas fa-user-plus"></i> TradeMirror Kayıt</h2>
             <form id="register-form">
                 <div class="form-group">
-                    <label for="register-email"><i class="fas fa-envelope"></i> E-posta</label>
-                    <input type="email" id="register-email" required>
+                    <label for="register-username">E-posta</label>
+                    <input type="email" id="register-username" required>
                 </div>
                 <div class="form-group">
-                    <label for="register-password"><i class="fas fa-lock"></i> Şifre</label>
-                    <input type="password" id="register-password" required>
+                    <label for="register-password">Şifre (Min 8 Karakter)</label>
+                    <input type="password" id="register-password" required minlength="8">
                 </div>
-                <button type="submit" class="auth-btn">Kayıt Ol</button>
+                <button type="submit" class="btn-secondary">Hemen Kayıt Ol</button>
             </form>
+            <div id="register-message" class="message" style="display: none;"></div>
+
+            <p class="mt-4">
+                Zaten hesabınız var mı? <span class="link-toggle" id="show-login">Giriş Yapın</span>
+            </p>
         </div>
         
-        </div>
+    </div>
 
     <script>
-        // -----------------------------------------------------------------------------------------
-        // ÇÖZÜM: Dinamik BACKEND_URL Tanımı
-        // Projenin hem yerel (localhost) hem de dış (ngrok) ortamda çalışması için ayarlandı.
-        // -----------------------------------------------------------------------------------------
+        // KRİTİK DEĞİŞİKLİK: Yerel adresi Render adresi ile değiştirildi
+        const BACKEND_URL = "https://borsa-xeqq.onrender.com"; 
 
-        let BACKEND_URL = '';
-        
-        // Eğer sayfa ngrok adresi üzerinden yükleniyorsa VEYA HTTPS kullanılıyorsa, ngrok adresini kullan.
-        // Ngrok URL'si: https://choripetalous-multiscreen-jami.ngrok-free.dev
-        if (window.location.hostname.includes('ngrok') || window.location.protocol === 'https:') {
-            BACKEND_URL = 'https://choripetalous-multiscreen-jami.ngrok-free.dev'; 
-            console.log('Backend URL (Ngrok):', BACKEND_URL);
-        } else {
-            // Aksi takdirde, yerel adresi kullan (Mac'te çalışırken)
-            BACKEND_URL = 'http://localhost:8000';
-            console.log('Backend URL (Local):', BACKEND_URL);
-        }
+        // --- 1. FONKSİYONLAR ---
 
+        // Mesaj gösterme fonksiyonu
+        function showMessage(message, type, targetId = 'login-message') {
+            const target = document.getElementById(targetId);
+            target.textContent = message;
+            target.className = `message ${type}`;
+            target.style.display = 'block';
 
-        // --- 1. YARDIMCI FONKSİYONLAR ---
-
-        const messageEl = document.getElementById('message');
-
-        function showMessage(text, type) {
-            messageEl.textContent = text;
-            messageEl.className = `message message-${type}`;
-            messageEl.style.display = 'block';
-            
-            // 5 saniye sonra mesajı gizle
+            // Mesajı 5 saniye sonra gizle
             setTimeout(() => {
-                messageEl.style.display = 'none';
+                target.style.display = 'none';
             }, 5000);
         }
 
+        // Form değiştirme fonksiyonu
         function toggleForm(formType) {
-            document.getElementById('login-form-content').classList.remove('active');
-            document.getElementById('register-form-content').classList.remove('active');
-            document.getElementById('login-switch').classList.remove('active');
-            document.getElementById('register-switch').classList.remove('active');
-
+            const loginContainer = document.getElementById('login-form-container');
+            const registerContainer = document.getElementById('register-form-container');
+            
             if (formType === 'login') {
-                document.getElementById('login-form-content').classList.add('active');
-                document.getElementById('login-switch').classList.add('active');
-            } else {
-                document.getElementById('register-form-content').classList.add('active');
-                document.getElementById('register-switch').classList.add('active');
+                loginContainer.style.display = 'block';
+                registerContainer.style.display = 'none';
+                document.getElementById('login-message').style.display = 'none'; // Mesajları temizle
+                document.getElementById('register-form').reset(); // Kayıt formunu temizle
+            } else if (formType === 'register') {
+                loginContainer.style.display = 'none';
+                registerContainer.style.display = 'block';
+                document.getElementById('register-message').style.display = 'none'; // Mesajları temizle
+                document.getElementById('login-form').reset(); // Giriş formunu temizle
             }
-            messageEl.style.display = 'none'; // Form değişince mesajı gizle
         }
 
+        // --- 2. OLAY DİNLEYİCİLER ---
 
-        // --- 2. KAYIT OL İŞLEMİ ---
+        // Form geçişleri
+        document.getElementById('show-register').addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleForm('register');
+        });
 
+        document.getElementById('show-login').addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleForm('login');
+        });
+
+        // Kayıt İşlemi
         document.getElementById('register-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('register-email').value;
+            const email = document.getElementById('register-username').value;
             const password = document.getElementById('register-password').value;
 
             try {
@@ -299,26 +277,26 @@
                 });
 
                 if (response.ok) {
-                    showMessage("Kayıt Başarılı! Lütfen giriş yapın.", 'success');
-                    document.getElementById('register-form').reset();
-                    toggleForm('login'); // Başarılı kayıttan sonra Giriş formuna geç
+                    showMessage('Kayıt başarılı! Giriş yapabilirsiniz.', 'success', 'register-message');
+                    // Başarılı kayıttan sonra giriş formuna geç
+                    setTimeout(() => toggleForm('login'), 2000); 
                 } else {
                     const errorData = await response.json();
-                    showMessage(`Kayıt Başarısız: ${errorData.detail || 'Bilinmeyen Hata'}`, 'error');
+                    const detail = errorData.detail || 'Bilinmeyen Hata';
+                    showMessage(`Kayıt Başarısız: ${detail}`, 'error', 'register-message');
                 }
 
             } catch (error) {
                 console.error("Kayıt hatası:", error);
-                showMessage("Sunucuya bağlanılamadı. Lütfen sunucuyu kontrol edin.", 'error');
+                showMessage("Sunucuya bağlanılamadı. Lütfen sunucuyu kontrol edin.", 'error', 'register-message');
             }
         });
 
 
-        // --- 3. GİRİŞ YAP İŞLEMİ ---
-
+        // Giriş İşlemi
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('login-email').value;
+            const email = document.getElementById('login-username').value;
             const password = document.getElementById('login-password').value;
 
             const formData = new URLSearchParams();
@@ -350,8 +328,7 @@
             }
         });
 
-        // --- 4. SOSYAL GİRİŞ (KALDIRILDI) ---
-        // socialLogin fonksiyonu artık çağrılmıyor/kullanılmıyor
+        // --- 4. SOSYAL GİRİŞ (KALDIRILDI) ---\n        // socialLogin fonksiyonu artık çağrılmıyor/kullanılmıyor
 
         document.addEventListener('DOMContentLoaded', () => {
              // Başlangıçta Giriş formunu göster
