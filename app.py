@@ -73,7 +73,9 @@ class User(Base):
     user_id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    # 🚨 KRİTİK DÜZELTME 2: is_active kolonu Boolean tipine ayarlandı.
+    # 🚨 KRİTİK DÜZELTME 2: Traceback'ten görülen setup_complete eklendi ve tipi düzeltildi.
+    setup_complete = Column(Boolean, default=False)
+    # 🚨 KRİTİK DÜZELTME 3: is_active kolonu Integer veya Python 'bool' yerine 'Boolean' tipine ayarlandı.
     is_active = Column(Boolean, default=True)
     api_key = Column(Text, nullable=True)
     api_secret = Column(Text, nullable=True)
@@ -180,7 +182,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)):
-    # is_active'i Boolean olarak güncelledik, bu yüzden kontrolü düzeltmeliyiz.
+    # is_active kolonu artık Boolean olduğu için kontrolü güncelledik.
     if current_user.is_active is not True:
         raise HTTPException(status_code=400, detail="Devre dışı bırakılmış kullanıcı")
     return current_user
@@ -280,7 +282,13 @@ def create_initial_admin_user():
             print(f"INFO: '{INITIAL_EMAIL}' kullanıcısı veritabanında bulunamadı. Yeni kullanıcı oluşturuluyor...")
             
             hashed_password = get_password_hash(INITIAL_PASSWORD)
-            db_user = User(email=INITIAL_EMAIL, hashed_password=hashed_password)
+            # is_active ve setup_complete varsayılan olarak True/False (veya 1/0) olarak ayarlanır
+            db_user = User(
+                email=INITIAL_EMAIL,
+                hashed_password=hashed_password,
+                is_active=True,
+                setup_complete=False # Yeni kullanıcı kurulum yapmadığı için
+            )
             
             db.add(db_user)
             db.commit()
@@ -404,7 +412,8 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
         
     hashed_password = get_password_hash(user.password)
-    db_user = User(email=user.email, hashed_password=hashed_password)
+    # Yeni kullanıcı oluşturulurken setup_complete=False olarak ayarlandı
+    db_user = User(email=user.email, hashed_password=hashed_password, setup_complete=False)
     
     db.add(db_user)
     db.commit()
@@ -430,6 +439,7 @@ def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_curr
     current_user.api_key = setup_data.api_key
     current_user.api_secret = setup_data.api_secret
     current_user.exchange = setup_data.exchange
+    current_user.setup_complete = True # Kurulum tamamlandı olarak işaretlendi
     
     db.commit()
     
@@ -443,7 +453,8 @@ def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_curr
 @app.get("/api/v1/setup/status", tags=["Setup"])
 def check_setup_status(current_user: User = Depends(get_current_active_user)):
     """ API key kurulum durumunu kontrol eder. """
-    is_setup = current_user.api_key is not None and current_user.api_secret is not None
+    # is_setup için artık yeni setup_complete kolonu kullanılıyor
+    is_setup = current_user.setup_complete
     return {"is_setup": is_setup, "exchange": current_user.exchange}
 
 
