@@ -49,7 +49,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-# KRİTİK DÜZELTME: Port 465 (SMTPS) yerine Port 587 (STARTTLS) kullanıldı.
+# E-posta sorununu çözen Port 587 (STARTTLS) kullanıldı.
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
 # UYARI: Bu şifre varsayılandır. Kendi GMail Uygulama Şifrenizle DEĞİŞTİRİN.
@@ -81,7 +81,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     api_key = Column(Text, nullable=True)
     api_secret = Column(Text, nullable=True)
-    exchange = Column(String, nullable=True)
+    exchange = Column(String, nullable=True) # Kullanıcının borsa adı (Örn: Binance, BIST)
 
 class DnaProfile(Base):
     __tablename__ = "dna_profiles"
@@ -98,7 +98,7 @@ class Transaction(Base):
     __tablename__ = "transactions"
     trade_id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, index=True)
-    symbol = Column(String)
+    symbol = Column(String) # Hissenin/Coinin adı (Örn: ADEL, BTC/USDT)
     entry_price = Column(Float)
     exit_price = Column(Float)
     size = Column(Float)
@@ -110,9 +110,6 @@ class Transaction(Base):
     emotion_at_exit = Column(String)
 
 try:
-    # Bu, kullanıcıların verilerinin her dağıtımda SİLİNMESİNİ ÖNLEYEN DÜZELTMEDİR.
-    # Base.metadata.drop_all(bind=engine)
-    
     Base.metadata.create_all(bind=engine)
 except OperationalError as e:
     print(f"KRİTİK HATA: Veritabanı bağlantı hatası! Detay: {e}")
@@ -190,9 +187,10 @@ def get_current_active_user(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Devre dışı bırakılmış kullanıcı")
     return current_user
 
-# KRİTİK GÜNCELLEME: Port 587 ve STARTTLS kullanımı
+# GÜNCEL E-POSTA GÖNDERME FONKSİYONLARI
+
 def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
-    """ Kullanıcıya e-posta ile rapor gönderir. SMTP ayarları doğru olmalıdır. """
+    """ Kullanıcıya haftalık raporu e-posta ile gönderir. (Port 587 ile düzeltildi) """
     
     if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "yjcu lcld eato zxek":
         raise HTTPException(status_code=500, detail="E-posta servisi yapılandırılmamış. Lütfen SMTP_PASSWORD'a GMail Uygulama Şifrenizi tanımlayın.")
@@ -232,6 +230,51 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
         print(f"E-posta gönderme hatası: {e}")
         # Kullanıcıya ağ veya kimlik doğrulama hatasını bildirir.
         raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Ağ/Kimlik doğrulama başarısız (Hata kodu: 500). Detay: {e}")
+
+
+def send_instant_alert_email(recipient_email: str, alert_data: Dict[str, Any]):
+    """ Anlık kritik haber uyarısı e-postası gönderir. (Port 587 ile düzeltildi) """
+    
+    if not SMTP_USERNAME or not SMTP_PASSWORD or SMTP_PASSWORD == "yjcu lcld eato zxek":
+        print("UYARI: SMTP şifresi tanımlı değil. E-posta gönderilemedi.")
+        return
+
+    try:
+        msg = EmailMessage()
+        msg['Subject'] = f"🚨 KRİTİK UYARI: {alert_data.get('alert_title', 'Yeni Gelişme')}"
+        msg['From'] = SMTP_USERNAME
+        msg['To'] = recipient_email
+        
+        content = f"""
+        Sayın {recipient_email},
+        
+        Portföyünüzü etkileyebilecek anlık bir gelişme tespit edilmiştir:
+
+        ---
+        Başlık: {alert_data.get('alert_title', 'N/A')}
+        Etki: {alert_data.get('impact', 'N/A')}
+        Duygu: {alert_data.get('sentiment', 'N/A')}
+        İlgili Borsa/Piyasa: {alert_data.get('exchange', 'N/A')}
+        ---
+        
+        Lütfen pozisyonlarınızı kontrol edin.
+
+        Saygılarımızla,
+        TradeMirror Global Yapay Zeka
+        """
+        msg.set_content(content)
+        
+        context = ssl.create_default_context()
+        
+        # Port 587 (STARTTLS) kullanımı
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls(context=context)
+            server.login(SMTP_USERNAME, SMTP_PASSWORD)
+            server.send_message(msg)
+            
+    except Exception as e:
+        raise Exception(f"Anlık bildirim e-posta hatası: {e}")
+
 
 def generate_weekly_report_summary(transactions: List[Transaction]) -> Dict[str, Any]:
     # Analiz mantığı (Mock veriler kullanılarak)
@@ -424,6 +467,86 @@ async def async_synchronize_user_trades(user_id: int, exchange_name: str, api_ke
     finally:
         db.close()
 
+# --- YENİ EŞZAMANSIZ HABER İZLEME VE BİLDİRİM FONKSİYONU ---
+
+async def ai_news_monitor_and_notify():
+    """ 
+    Periyodik olarak tüm kullanıcıların hisselerini izler ve kritik haberleri e-posta ile bildirir.
+    Bu, FastAPI başlatıldığında sonsuz bir arka plan döngüsü olarak çalışacaktır.
+    """
+    
+    # Haber kontrol döngüsünü başlatmak için bekleme süresi (Her 5 dakikada bir kontrol)
+    CHECK_INTERVAL_SECONDS = 300
+    
+    while True:
+        await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+        print(f"\nINFO: Yapay Zeka Haber Monitörü çalışıyor... (Her {CHECK_INTERVAL_SECONDS} saniyede bir)")
+        
+        db = SessionLocal()
+        try:
+            # Sadece aktif ve kurulumu tamamlanmış kullanıcıları çek
+            users = db.query(User).filter(User.is_active == True, User.setup_complete == True).all()
+            
+            for user in users:
+                
+                # Kullanıcının izlemesi gereken anahtar kelimeleri oluştur.
+                # Gerçekte, kullanıcının Transaction tablosundan en çok işlem yaptığı semboller çekilir.
+                monitored_keywords = []
+                
+                # 1. Kullanıcının borsasını/piyasasını ekle (Örn: BIST)
+                if user.exchange:
+                     monitored_keywords.append(user.exchange.upper())
+                     
+                # 2. Örnek olarak sabit hisse ismini ekle (Gerçekte dinamik olmalı)
+                monitored_keywords.extend(["ADEL KALEM", "BIST", "NASDAQ", "KRİPTO PİYASASI"])
+                
+                monitored_keywords = list(set(monitored_keywords)) # Tekrarları kaldır
+                
+                if not monitored_keywords:
+                    continue
+                
+                # MOCK Haber Kaynağı (Gerçekte buradan API, RSS veya Web Scraper ile veri çekilir)
+                mock_news_feed = [
+                    {"source": "Twitter/X", "title": f"Küresel çapta faiz artışı bekleniyor. {user.exchange.upper()} için ani satış riski.", "sentiment": "NEGATİF", "impact": "YÜKSEK"},
+                    {"source": "Yerel Ekonomi", "title": "ADEL KALEM Hisseleri hakkında yeni bir yatırım teşvik haberi yayımlandı.", "sentiment": "POZİTİF", "impact": "YÜKSEK"},
+                    {"source": "Reuters", "title": "BIST 100 endeksi günü yatay seyirle kapattı. Piyasa sakin.", "sentiment": "NÖTR", "impact": "DÜŞÜK"},
+                    {"source": "Global Ekonomi", "title": f"Çin ekonomisi beklentileri aştı, {user.exchange.upper()} genel piyasaya olumlu tepki verdi.", "sentiment": "POZİTİF", "impact": "ORTA"},
+                    {"source": "Twitter/X", "title": "Piyasa etkisi düşük bir tweet.", "sentiment": "NÖTR", "impact": "DÜŞÜK"},
+                    {"source": "Yerel Ekonomi", "title": "Sektör genelinde kârlılık azaldı. ADEL KALEM dikkatli olmalı.", "sentiment": "NEGATİF", "impact": "ORTA"},
+                ]
+                
+                critical_alerts = []
+                
+                for news in mock_news_feed:
+                    # Basit Anahtar Kelime Eşleştirme (Yapay Zeka taklidi)
+                    is_relevant = any(keyword in news['title'].upper() for keyword in monitored_keywords)
+                    
+                    # Kritiklik Kontrolü: Yüksek veya Orta Etkili ve Duygusal yükü olan (Nötr olmayan) haberleri seç
+                    is_critical = (news['impact'] in ["YÜKSEK", "ORTA"]) and (news['sentiment'] in ["POZİTİF", "NEGATİF"])
+                    
+                    if is_relevant and is_critical:
+                        critical_alerts.append(news)
+                        
+                # Bildirim Gönderme
+                for alert in critical_alerts:
+                    print(f"BİLDİRİM: Kullanıcı {user.email} için kritik uyarı: {alert['title']} ({alert['sentiment']})")
+                    
+                    alert_content = {
+                        "alert_title": alert['title'],
+                        "sentiment": alert['sentiment'],
+                        "impact": alert['impact'],
+                        "exchange": user.exchange if user.exchange else "Genel Piyasa"
+                    }
+                    
+                    try:
+                        send_instant_alert_email(user.email, alert_content)
+                    except Exception as e:
+                        print(f"E-posta gönderme hatası (Anlık Bildirim): {user.email} -> {e}")
+                        
+        except Exception as e:
+            print(f"GENEL MONİTÖR HATA: {e}")
+        finally:
+            db.close()
 
 # --- İLK BAŞLANGIÇ GÖREVLERİ ---
 try:
@@ -435,9 +558,16 @@ except Exception as e:
 # --- FASTAPI UYGULAMASI ---
 app = FastAPI(
     title="TradeMirror Global API",
-    description="Davranışsal Analiz ve İşlem Kayıt Sistemi",
+    description="Davranışsal Analiz ve Kişiselleştirilmiş Haber Sistemi",
     version="1.0.0",
 )
+
+# KRİTİK: Uygulama başlatıldığında arka plan görevini başlatın
+@app.on_event("startup")
+async def startup_event():
+    # Haber monitörünü arayüzü engellemeyen arka plan görevi olarak başlatır
+    asyncio.create_task(ai_news_monitor_and_notify())
+    print("INFO: Yapay Zeka Haber Monitörü arka planda başlatıldı.")
 
 # --- UZAKTAN ERİŞİM ÇÖZÜMÜ ---
 app.mount("/static", StaticFiles(directory="."), name="static")
