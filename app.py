@@ -49,7 +49,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # SMTP (E-posta) Ayarları
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-# E-posta sorununu çözen Port 587 (STARTTLS) kullanıldı.
+# E-posta sorununu çözmek için Port 587 (STARTTLS) kullanıldı.
 SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
 SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "adelozdem6@gmail.com")
 # UYARI: Bu şifre varsayılandır. Kendi GMail Uygulama Şifrenizle DEĞİŞTİRİN.
@@ -60,10 +60,10 @@ pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/token")
 
 # --- VERİTABANI YAPILANDIRMASI ---
-# SSL ve Bağlantı Havuzu istikrarı için gerekli ayarlar.
+# SSL Hatası Düzeltmesi: connect_args kaldırıldı. Render, bu ayarı DATABASE_URL'den yönetmelidir.
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"sslmode": "require"},
+    # connect_args={"sslmode": "require"}, # <<< ÖNCEKİ DB HATASI İÇİN KALDIRILDI
     pool_pre_ping=True,
     # Bağlantı kesintilerini önlemek için geri dönüşüm süresi.
     pool_recycle=60
@@ -82,6 +82,8 @@ class User(Base):
     api_key = Column(Text, nullable=True)
     api_secret = Column(Text, nullable=True)
     exchange = Column(String, nullable=True) # Kullanıcının borsa adı (Örn: Binance, BIST)
+    # YENİ ALAN: Yapay zekanın izleyeceği hisseler/semboller listesi (JSON formatında saklanır)
+    monitored_symbols = Column(Text, default="[]")
 
 class DnaProfile(Base):
     __tablename__ = "dna_profiles"
@@ -133,6 +135,11 @@ class SetupApiKey(BaseModel):
     api_key: str
     api_secret: str
     exchange: str
+    
+# YENİ Pydantic Modeli: İzlenecek hisse/sembol listesi
+class MonitoredSymbolsUpdate(BaseModel):
+    symbols: List[str]
+
 
 # --- GEREKSİNİM BAĞIMLILIKLARI ve YARDIMCI FONKSİYONLAR ---
 
@@ -227,6 +234,7 @@ def send_email_report(recipient_email: str, report_data: Dict[str, Any]):
             server.send_message(msg)
             
     except Exception as e:
+        # Hata Mesajı: [Errno 101] Network is unreachable genellikle buradan kaynaklanır.
         print(f"E-posta gönderme hatası: {e}")
         # Kullanıcıya ağ veya kimlik doğrulama hatasını bildirir.
         raise HTTPException(status_code=500, detail=f"E-posta gönderme hatası. Ağ/Kimlik doğrulama başarısız (Hata kodu: 500). Detay: {e}")
@@ -273,6 +281,8 @@ def send_instant_alert_email(recipient_email: str, alert_data: Dict[str, Any]):
             server.send_message(msg)
             
     except Exception as e:
+        print(f"Anlık bildirim e-posta hatası: {e}")
+        # Hatanın loglanması.
         raise Exception(f"Anlık bildirim e-posta hatası: {e}")
 
 
@@ -471,8 +481,8 @@ async def async_synchronize_user_trades(user_id: int, exchange_name: str, api_ke
 
 async def ai_news_monitor_and_notify():
     """ 
-    Periyodik olarak tüm kullanıcıların hisselerini izler ve kritik haberleri e-posta ile bildirir.
-    Bu, FastAPI başlatıldığında sonsuz bir arka plan döngüsü olarak çalışacaktır.
+    Periyodik olarak tüm kullanıcıların izlediği hisseleri takip eder 
+    ve kritik haberleri e-posta ile bildirir.
     """
     
     # Haber kontrol döngüsünü başlatmak için bekleme süresi (Her 5 dakikada bir kontrol)
@@ -489,36 +499,41 @@ async def ai_news_monitor_and_notify():
             
             for user in users:
                 
-                # Kullanıcının izlemesi gereken anahtar kelimeleri oluştur.
-                # Gerçekte, kullanıcının Transaction tablosundan en çok işlem yaptığı semboller çekilir.
                 monitored_keywords = []
                 
-                # 1. Kullanıcının borsasını/piyasasını ekle (Örn: BIST)
+                # 1. Kullanıcının kaydettiği hisseleri/sembolleri yükle (monitored_symbols alanı)
+                try:
+                    # JSON metnini Python listesine dönüştür
+                    symbols_from_db = json.loads(user.monitored_symbols)
+                    monitored_keywords.extend([s.upper() for s in symbols_from_db])
+                except Exception as e:
+                    # Eğer JSON yükleme hatası olursa (örneğin ilk kurulumda boşsa), pas geç
+                    print(f"UYARI: Kullanıcı {user.email} için izlenen semboller yüklenemedi. Detay: {e}")
+                
+                # 2. Kullanıcının genel borsa/piyasasını ekle (Exchange alanı)
                 if user.exchange:
                      monitored_keywords.append(user.exchange.upper())
-                     
-                # 2. Örnek olarak sabit hisse ismini ekle (Gerçekte dinamik olmalı)
-                monitored_keywords.extend(["ADEL KALEM", "BIST", "NASDAQ", "KRİPTO PİYASASI"])
                 
-                monitored_keywords = list(set(monitored_keywords)) # Tekrarları kaldır
-                
+                # Herhangi bir izlenecek kelime yoksa devam etme
                 if not monitored_keywords:
                     continue
                 
-                # MOCK Haber Kaynağı (Gerçekte buradan API, RSS veya Web Scraper ile veri çekilir)
+                monitored_keywords = list(set(monitored_keywords)) # Tekrarları kaldır
+                
+                # MOCK Haber Kaynağı (Artık dinamik olarak izlenen kelimeleri simüle eder)
                 mock_news_feed = [
-                    {"source": "Twitter/X", "title": f"Küresel çapta faiz artışı bekleniyor. {user.exchange.upper()} için ani satış riski.", "sentiment": "NEGATİF", "impact": "YÜKSEK"},
+                    {"source": "Twitter/X", "title": f"Küresel çapta faiz artışı bekleniyor. GENEL PİYASA için ani satış riski.", "sentiment": "NEGATİF", "impact": "YÜKSEK"},
                     {"source": "Yerel Ekonomi", "title": "ADEL KALEM Hisseleri hakkında yeni bir yatırım teşvik haberi yayımlandı.", "sentiment": "POZİTİF", "impact": "YÜKSEK"},
                     {"source": "Reuters", "title": "BIST 100 endeksi günü yatay seyirle kapattı. Piyasa sakin.", "sentiment": "NÖTR", "impact": "DÜŞÜK"},
-                    {"source": "Global Ekonomi", "title": f"Çin ekonomisi beklentileri aştı, {user.exchange.upper()} genel piyasaya olumlu tepki verdi.", "sentiment": "POZİTİF", "impact": "ORTA"},
-                    {"source": "Twitter/X", "title": "Piyasa etkisi düşük bir tweet.", "sentiment": "NÖTR", "impact": "DÜŞÜK"},
-                    {"source": "Yerel Ekonomi", "title": "Sektör genelinde kârlılık azaldı. ADEL KALEM dikkatli olmalı.", "sentiment": "NEGATİF", "impact": "ORTA"},
+                    {"source": "Global Ekonomi", "title": "Büyük teknoloji hisselerinde ralli bekleniyor.", "sentiment": "POZİTİF", "impact": "ORTA"},
+                    {"source": "Yerel Ekonomi", "title": "Sektör genelinde kârlılık azaldı. THYAO dikkatli olmalı.", "sentiment": "NEGATİF", "impact": "ORTA"},
+                    {"source": "Küresel Finans", "title": "KRİPTO PİYASASI regülasyon haberleri bekleniyor.", "sentiment": "NÖTR", "impact": "ORTA"},
                 ]
                 
                 critical_alerts = []
                 
                 for news in mock_news_feed:
-                    # Basit Anahtar Kelime Eşleştirme (Yapay Zeka taklidi)
+                    # Anahtar Kelime Eşleştirme (Yapay Zeka taklidi)
                     is_relevant = any(keyword in news['title'].upper() for keyword in monitored_keywords)
                     
                     # Kritiklik Kontrolü: Yüksek veya Orta Etkili ve Duygusal yükü olan (Nötr olmayan) haberleri seç
@@ -541,6 +556,7 @@ async def ai_news_monitor_and_notify():
                     try:
                         send_instant_alert_email(user.email, alert_content)
                     except Exception as e:
+                        # Loglama, Network is unreachable hatasının burada görünmesini sağlar
                         print(f"E-posta gönderme hatası (Anlık Bildirim): {user.email} -> {e}")
                         
         except Exception as e:
@@ -610,6 +626,7 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Bu e-posta adresi zaten kayıtlı.")
         
     hashed_password = get_password_hash(user.password)
+    # Yeni kullanıcı oluşturulurken monitored_symbols otomatik olarak "[]" (boş liste) olacak
     db_user = User(email=user.email, hashed_password=hashed_password, setup_complete=False)
     
     db.add(db_user)
@@ -628,6 +645,20 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
 @app.get("/api/v1/users/me", response_model=UserBase, tags=["User"])
 def read_users_me(current_user: User = Depends(get_current_active_user)):
     return current_user
+
+# YENİ ROTA: Kullanıcının izlediği hisse/sembol listesini kaydeder
+@app.post("/api/v1/user/monitorsymbols", tags=["User"])
+def update_monitored_symbols(
+    data: MonitoredSymbolsUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """ Kullanıcının izlediği hisse/sembol listesini günceller. """
+    # Listeyi JSON formatında metin olarak kaydet
+    current_user.monitored_symbols = json.dumps([s.upper() for s in data.symbols])
+    db.commit()
+    return {"message": "İzlenen hisseler başarıyla güncellendi."}
+
 
 @app.post("/api/v1/setup/apikey", tags=["Setup"])
 async def setup_api_key(setup_data: SetupApiKey, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
@@ -666,7 +697,8 @@ def check_setup_status(current_user: User = Depends(get_current_active_user)):
 # --- İŞLEM ROTALARI ---
 
 class TransactionManualCreate(BaseModel):
-    trade_id: str
+    # Bu modelde trade_id yerine hisse sembolü (örneğin: "ADEL") girilebilir
+    symbol: str
     is_winning: bool
     duration_hours: float
     pnl_pct: float
@@ -687,7 +719,8 @@ def add_transaction_manual(
     
     db_transaction = Transaction(
         user_id=current_user.user_id,
-        symbol="MANUAL/USDT",
+        # Kullanıcının girdiği sembolü kullan
+        symbol=transaction.symbol.upper(),
         entry_price=100.0,
         exit_price=100.0 * (1 + pnl_val / 100),
         size=1.0,
